@@ -35,11 +35,15 @@ jobs:
 
       - run: flutter pub get
 
-      - name: Free up disk and memory
+      - name: Free disk & add swap
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk-bundle
           sudo apt-get clean
-          df -h
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
 
       - run: flutter build apk --release --target-platform android-arm64 --no-shrink
 
