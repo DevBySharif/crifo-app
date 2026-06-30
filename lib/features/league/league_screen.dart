@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/api/fotmob_client.dart';
 import '../../core/theme/colors.dart';
 import '../match_detail/match_detail_screen.dart';
+import '../team/team_screen.dart';
 
 Map<String, dynamic> _m(dynamic v) {
   if (v is Map<String, dynamic>) return v;
@@ -17,8 +19,10 @@ int _i(dynamic v) => int.tryParse(_s(v)) ?? 0;
 final _leagueProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, id) async {
   final details = await FotmobClient.getLeagueDetails(id);
   Map<String, dynamic> stats = {};
+  List<Map<String, dynamic>> news = [];
   try { stats = await FotmobClient.getLeagueStats(id); } catch (_) {}
-  return {'details': details, 'stats': stats};
+  try { news = await FotmobClient.getLeagueNews(id); } catch (_) {}
+  return {'details': details, 'stats': stats, 'news': news};
 });
 
 class LeagueScreen extends ConsumerStatefulWidget {
@@ -37,7 +41,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -61,7 +65,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
           labelColor: AppColors.accentBlue,
           unselectedLabelColor: AppColors.textMuted,
           tabs: const [
-            Tab(text: 'TABLE'), Tab(text: 'FIXTURES'), Tab(text: 'STATS'),
+            Tab(text: 'TABLE'), Tab(text: 'FIXTURES'), Tab(text: 'STATS'), Tab(text: 'NEWS'),
           ],
         ),
       ),
@@ -70,6 +74,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
           _TableTab(details: _m(d['details'])),
           _FixturesTab(details: _m(d['details'])),
           _StatsTab(stats: _m(d['stats']), details: _m(d['details'])),
+          _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
         ]),
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
         error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: AppColors.textMuted))),
@@ -114,7 +119,12 @@ class _TableTab extends StatelessWidget {
         final ga = _s(r['goalsAgainst'] ?? r['ga'] ?? r['conceded'] ?? '0');
         final gd = _s(r['gd'] ?? r['goalsDiff'] ?? '${_i(gf) - _i(ga)}');
 
-        return Container(
+        return GestureDetector(
+          onTap: () {
+            if (teamId.isNotEmpty) Navigator.push(context, MaterialPageRoute(
+              builder: (_) => TeamScreen(teamId: teamId, teamName: name)));
+          },
+          child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
@@ -138,7 +148,7 @@ class _TableTab extends StatelessWidget {
               color: _i(gd) > 0 ? AppColors.accentGreen : _i(gd) < 0 ? AppColors.accentRed : AppColors.textSecondary), textAlign: TextAlign.center)),
             SizedBox(width: 28, child: Text(pts, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary), textAlign: TextAlign.center)),
           ]),
-        );
+        ));
       },
     );
   }
@@ -224,6 +234,80 @@ class _StatsTab extends StatelessWidget {
               child: Text(goals, style: const TextStyle(color: AppColors.accentBlue, fontSize: 13, fontWeight: FontWeight.w700)),
             ),
           ]),
+        );
+      },
+    );
+  }
+}
+
+// ─── LEAGUE NEWS TAB ──────────────────────────────────────────────────────────
+class _LeagueNewsTab extends StatelessWidget {
+  final List<Map<String, dynamic>> news;
+  const _LeagueNewsTab({required this.news});
+
+  @override
+  Widget build(BuildContext context) {
+    if (news.isEmpty) {
+      return const Center(child: Text('No news available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: news.length,
+      itemBuilder: (ctx, i) {
+        final n = news[i];
+        final title = _s(n['title']);
+        final imageUrl = _s(n['imageUrl']);
+        final url = _s(n['url']);
+        final source = _s(n['source']);
+
+        return GestureDetector(
+          onTap: () async {
+            if (url.isNotEmpty) {
+              try {
+                final uri = Uri.parse(url.startsWith('http') ? url : 'https://www.fotmob.com$url');
+                if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } catch (_) {}
+            }
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: AppColors.bgCard,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (imageUrl.isNotEmpty)
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  child: CachedNetworkImage(
+                    imageUrl: imageUrl, height: 160, width: double.infinity, fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => Container(height: 80, color: AppColors.bgElevated,
+                      child: const Icon(Icons.image_not_supported_outlined, color: AppColors.textMuted)),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (source.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.accentPrimary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(source.toUpperCase(), style: const TextStyle(
+                        color: AppColors.accentPrimary, fontSize: 9,
+                        fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+                    ),
+                  Text(title, style: const TextStyle(
+                    color: AppColors.textPrimary, fontSize: 14,
+                    fontWeight: FontWeight.w600, fontFamily: 'Inter', height: 1.3)),
+                ]),
+              ),
+            ]),
+          ),
         );
       },
     );

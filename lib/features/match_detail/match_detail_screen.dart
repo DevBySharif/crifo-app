@@ -109,7 +109,7 @@ class MatchDetailScreen extends ConsumerStatefulWidget {
 class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
-  final _tabLabels = ['PREVIEW', 'EVENTS', 'STATS', 'LINEUP', 'H2H', 'PLAYERS'];
+  final _tabLabels = ['PREVIEW', 'EVENTS', 'STATS', 'LINEUP', 'H2H', 'COMMENTARY', 'PLAYERS'];
 
   @override
   void initState() {
@@ -218,6 +218,7 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
               _StatsTab(data: data),
               _LineupTab(data: data),
               _H2HTab(data: data, header: header),
+              _CommentaryTab(matchId: widget.matchId),
               _PlayersTab(data: data, header: header),
             ],
           ),
@@ -1571,6 +1572,92 @@ class _PlayerStatRow extends StatelessWidget {
           SizedBox(width: 28, child: Text(a.isNotEmpty && a != '0' ? a : '-', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12), textAlign: TextAlign.center)),
         ]),
       ),
+    );
+  }
+}
+// ─── COMMENTARY TAB ───────────────────────────────────────────────────────────
+final _commentaryProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, matchId) async {
+  return FotmobClient.getMatchCommentary(matchId);
+});
+
+class _CommentaryTab extends ConsumerWidget {
+  final String matchId;
+  const _CommentaryTab({required this.matchId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final data = ref.watch(_commentaryProvider(matchId));
+    return data.when(
+      data: (entries) {
+        if (entries.isEmpty) {
+          return const Center(child: Text('Commentary not available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: entries.length,
+          itemBuilder: (ctx, i) {
+            final e = entries[i];
+            final min = _s(e['minute'] ?? e['min'] ?? e['time'] ?? '');
+            final text = _s(e['text'] ?? e['comment'] ?? e['message'] ?? '');
+            final type = _s(e['type'] ?? e['eventType'] ?? '').toLowerCase();
+
+            final isGoal = type.contains('goal') || text.toLowerCase().contains('goal');
+            final isCard = type.contains('card') || text.toLowerCase().contains('yellow') || text.toLowerCase().contains('red');
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // Minute
+                Container(
+                  width: 44,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  alignment: Alignment.topCenter,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isGoal ? AppColors.accentGreen.withOpacity(0.15)
+                          : isCard ? AppColors.accentRed.withOpacity(0.12)
+                          : AppColors.bgElevated,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(min.isNotEmpty ? "$min'" : '•',
+                      style: TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w700, fontFamily: 'Inter',
+                        color: isGoal ? AppColors.accentGreen
+                            : isCard ? AppColors.accentRed
+                            : AppColors.textMuted,
+                      )),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Text
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isGoal ? AppColors.accentGreen.withOpacity(0.06)
+                          : AppColors.bgCard,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isGoal ? AppColors.accentGreen.withOpacity(0.2)
+                            : AppColors.border,
+                      ),
+                    ),
+                    child: Text(text,
+                      style: TextStyle(
+                        color: isGoal ? AppColors.textPrimary : AppColors.textSecondary,
+                        fontSize: 12, fontFamily: 'Inter',
+                        fontWeight: isGoal ? FontWeight.w600 : FontWeight.w400,
+                      )),
+                  ),
+                ),
+              ]),
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue, strokeWidth: 2)),
+      error: (e, _) => const Center(child: Text('Could not load commentary', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter'))),
     );
   }
 }

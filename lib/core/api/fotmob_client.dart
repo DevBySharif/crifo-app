@@ -95,6 +95,26 @@ class FotmobClient {
   static Future<Map<String, dynamic>> getMatchH2H(String matchId) =>
       _get('matchDetails', params: {'matchId': matchId, 'tab': 'h2h'}, ttl: const Duration(minutes: 60));
 
+  static Future<List<Map<String, dynamic>>> getMatchCommentary(String matchId) async {
+    final data = await _get('matchDetails', params: {'matchId': matchId, 'tab': 'commentary'}, ttl: const Duration(seconds: 20));
+    final commentary = _extractCommentary(data);
+    return commentary;
+  }
+
+  static List<Map<String, dynamic>> _extractCommentary(Map<String, dynamic> data) {
+    final content = data['content'] is Map ? data['content'] as Map : {};
+    final commentary = content['commentary'];
+    if (commentary is List) return commentary.map((e) => e is Map ? e.cast<String, dynamic>() : <String, dynamic>{}).toList();
+    if (commentary is Map) {
+      final entries = commentary['entries'] ?? commentary['comments'] ?? commentary['items'] ?? [];
+      if (entries is List) return entries.map((e) => e is Map ? e.cast<String, dynamic>() : <String, dynamic>{}).toList();
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>> getMatchOdds(String matchId) =>
+      _get('matchDetails', params: {'matchId': matchId, 'tab': 'odds'}, ttl: const Duration(minutes: 30));
+
   static Future<Map<String, dynamic>> getTeamDetails(String teamId) =>
       _get('teams', params: {'id': teamId, 'tab': 'overview', 'type': 'team', 'timeZone': 'Asia/Dhaka'});
 
@@ -151,6 +171,20 @@ class FotmobClient {
     if (season != null) p['season'] = season;
     return _get('leagues', params: p, ttl: const Duration(minutes: 30));
   }
+
+  static Future<List<Map<String, dynamic>>> getLeagueNews(String id) async {
+    final data = await _get('tlnews', params: {'id': id, 'type': 'league', 'language': 'en-GB', 'startIndex': '0'}, ttl: const Duration(minutes: 30));
+    final items = (data['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    return items.map((n) => {
+      'title': n['title']?.toString() ?? '',
+      'imageUrl': n['imageUrl']?.toString() ?? '',
+      'url': (n['page'] as Map?)?.containsKey('url') == true ? n['page']['url'].toString() : '',
+      'source': n['sourceStr']?.toString() ?? '',
+    }).toList();
+  }
+
+  static Future<Map<String, dynamic>> getAllCountries() =>
+      _get('allLeagues', params: {}, ttl: const Duration(hours: 6));
 
   static Future<Map<String, dynamic>> getLeagueTopList(String id, {String? season}) {
     final p = {'id': id, 'tab': 'toplist', 'type': 'league', 'timeZone': 'Asia/Dhaka'};
