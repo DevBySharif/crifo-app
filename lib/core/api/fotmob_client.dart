@@ -96,18 +96,49 @@ class FotmobClient {
       _get('matchDetails', params: {'matchId': matchId, 'tab': 'h2h'}, ttl: const Duration(minutes: 60));
 
   static Future<List<Map<String, dynamic>>> getMatchCommentary(String matchId) async {
-    final data = await _get('matchDetails', params: {'matchId': matchId, 'tab': 'commentary'}, ttl: const Duration(seconds: 20));
-    final commentary = _extractCommentary(data);
-    return commentary;
+    // Try commentary tab first, fallback to main matchDetails
+    Map<String, dynamic> data = {};
+    try {
+      data = await _get('matchDetails', params: {'matchId': matchId, 'tab': 'commentary'}, ttl: const Duration(seconds: 20));
+    } catch (_) {
+      data = await _get('matchDetails', params: {'matchId': matchId}, ttl: const Duration(seconds: 30));
+    }
+    return _extractCommentary(data);
   }
 
   static List<Map<String, dynamic>> _extractCommentary(Map<String, dynamic> data) {
-    final content = data['content'] is Map ? data['content'] as Map : {};
-    final commentary = content['commentary'];
-    if (commentary is List) return commentary.map((e) => e is Map ? e.cast<String, dynamic>() : <String, dynamic>{}).toList();
-    if (commentary is Map) {
-      final entries = commentary['entries'] ?? commentary['comments'] ?? commentary['items'] ?? [];
-      if (entries is List) return entries.map((e) => e is Map ? e.cast<String, dynamic>() : <String, dynamic>{}).toList();
+    // FotMob commentary can be in multiple paths
+    final tryPaths = [
+      () => data['content']?['commentary'],
+      () => data['commentary'],
+      () => data['content']?['matchFacts']?['events']?['events'],
+      () => data['content']?['events']?['events'],
+    ];
+
+    for (final path in tryPaths) {
+      try {
+        final val = path();
+        if (val == null) continue;
+        if (val is List && val.isNotEmpty) {
+          return val
+              .map((e) => e is Map ? (e is Map<String, dynamic> ? e : (e as Map).cast<String, dynamic>()) : <String, dynamic>{})
+              .where((e) => e.isNotEmpty)
+              .toList()
+              .reversed
+              .toList(); // newest first
+        }
+        if (val is Map) {
+          final entries = val['entries'] ?? val['comments'] ?? val['items'] ?? val['commentary'] ?? [];
+          if (entries is List && entries.isNotEmpty) {
+            return (entries as List)
+                .map((e) => e is Map ? (e is Map<String, dynamic> ? e : (e as Map).cast<String, dynamic>()) : <String, dynamic>{})
+                .where((e) => e.isNotEmpty)
+                .toList()
+                .reversed
+                .toList();
+          }
+        }
+      } catch (_) {}
     }
     return [];
   }

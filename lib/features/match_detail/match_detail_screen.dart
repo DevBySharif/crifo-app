@@ -1597,9 +1597,15 @@ class _CommentaryTab extends ConsumerWidget {
           itemCount: entries.length,
           itemBuilder: (ctx, i) {
             final e = entries[i];
-            final min = _s(e['minute'] ?? e['min'] ?? e['time'] ?? '');
-            final text = _s(e['text'] ?? e['comment'] ?? e['message'] ?? '');
-            final type = _s(e['type'] ?? e['eventType'] ?? '').toLowerCase();
+            // FotMob events: {minute, minuteExtra, type, description, player, team}
+            // Commentary: {minute, text, type}
+            final minNum = _s(e['minute'] ?? e['min'] ?? e['time'] ?? '');
+            final minExtra = _s(e['minuteExtra'] ?? e['minuteAddedTime'] ?? '');
+            final min = minExtra.isNotEmpty && minExtra != '0' ? '$minNum+$minExtra' : minNum;
+            final text = _s(e['text'] ?? e['comment'] ?? e['message'] ?? e['description'] ?? '');
+            final type = _s(e['type'] ?? e['eventType'] ?? e['typeId'] ?? '').toLowerCase();
+            // Skip empty entries
+            if (text.isEmpty && min.isEmpty) return const SizedBox.shrink();
 
             final isGoal = type.contains('goal') || text.toLowerCase().contains('goal');
             final isCard = type.contains('card') || text.toLowerCase().contains('yellow') || text.toLowerCase().contains('red');

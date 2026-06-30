@@ -14,6 +14,17 @@ Map<String, dynamic> _m(dynamic v) {
 List _l(dynamic v) => v is List ? v : [];
 String _s(dynamic v) => v?.toString() ?? '';
 
+// Resolves FotMob i18n objects {key: 'keeper_long', fallback: 'Keeper'} to text
+String _resolveI18n(dynamic v) {
+  if (v == null) return '';
+  if (v is String) return v;
+  if (v is Map) {
+    final m = v is Map<String, dynamic> ? v : (v as Map).cast<String, dynamic>();
+    return _s(m['fallback'] ?? m['short'] ?? m['key'] ?? '');
+  }
+  return v.toString();
+}
+
 final _teamProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, id) async {
   final details = await FotmobClient.getTeamDetails(id);
   Map<String, dynamic> stats = {};
@@ -332,7 +343,7 @@ class _SquadTab extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       children: groups.map((g) {
         final group = _m(g);
-        final title = _s(group['title']).toUpperCase();
+        final title = _resolveI18n(group['title']).toUpperCase();
         final members = _l(group['members']);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,7 +365,7 @@ class _SquadTab extends StatelessWidget {
               final p = _m(m);
               final pid = _s(p['id'] ?? p['playerId']);
               final name = _s(p['name']);
-              final pos = _s(p['position'] ?? p['pos'] ?? p['role'] ?? '');
+              final pos = _resolveI18n(p['position'] ?? p['pos'] ?? p['role'] ?? '');
               final shirt = _s(p['shirt'] ?? p['jerseyNumber'] ?? p['shirtNumber'] ?? '');
 
               return Padding(
@@ -419,8 +430,15 @@ class _TeamStatsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Try various paths FotMob uses for team stats
-    final statsObj = _m(data['stats'] ?? data['topLists'] ?? data);
-    final topLists = _l(statsObj['topLists'] ?? statsObj['stats'] ?? []);
+    // FotMob team stats: various paths depending on endpoint
+    final statsObj = _m(data['stats'] ?? data['topLists'] ?? data['overview'] ?? data);
+    final topLists = _l(
+      statsObj['topLists'] ??
+      statsObj['stats'] ??
+      statsObj['playerStats'] ??
+      data['topLists'] ??
+      []
+    );
 
     if (topLists.isEmpty) {
       return const Center(child: Text('No stats available', style: TextStyle(color: AppColors.textMuted)));

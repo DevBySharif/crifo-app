@@ -489,26 +489,28 @@ class _CareerSection extends StatelessWidget {
                   ]),
                 ])),
                 const SizedBox(width: 8),
-                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  if (apps.isNotEmpty && apps != '0')
-                    Text('$apps apps', style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                  Row(children: [
-                    if (goals.isNotEmpty && goals != '0')
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(color: AppColors.accentGreen.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                        child: Text('$goals gls', style: const TextStyle(color: AppColors.accentGreen, fontSize: 9, fontWeight: FontWeight.w700)),
-                      ),
-                    if (assists.isNotEmpty && assists != '0') ...[
-                      const SizedBox(width: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(color: AppColors.accentBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                        child: Text('$assists ast', style: const TextStyle(color: AppColors.accentBlue, fontSize: 9, fontWeight: FontWeight.w700)),
-                      ),
-                    ],
+                SizedBox(
+                  width: 90,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    if (apps.isNotEmpty && apps != '0')
+                      Text('$apps apps', style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                    const SizedBox(height: 3),
+                    Wrap(alignment: WrapAlignment.end, spacing: 4, runSpacing: 2, children: [
+                      if (goals.isNotEmpty && goals != '0')
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: AppColors.accentGreen.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                          child: Text('$goals gls', style: const TextStyle(color: AppColors.accentGreen, fontSize: 9, fontWeight: FontWeight.w700)),
+                        ),
+                      if (assists.isNotEmpty && assists != '0')
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: AppColors.accentBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                          child: Text('$assists ast', style: const TextStyle(color: AppColors.accentBlue, fontSize: 9, fontWeight: FontWeight.w700)),
+                        ),
+                    ]),
                   ]),
-                ]),
+                ),
               ]),
             ),
           ),
