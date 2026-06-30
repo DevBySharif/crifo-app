@@ -22,11 +22,16 @@ jobs:
           flutter-version: '3.32.4'
           channel: stable
 
-      # local.properties is in .gitignore — generate it for CI
+      # Install the exact NDK version specified in build.gradle.kts
+      - name: Install NDK
+        run: echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006"
+
+      # local.properties is gitignored — generate it for CI
       - name: Generate local.properties
         run: |
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
-          echo "flutter.sdk=$FLUTTER_ROOT"  >> android/local.properties
+          echo "sdk.dir=$ANDROID_SDK_ROOT"   > android/local.properties
+          echo "flutter.sdk=$FLUTTER_ROOT"   >> android/local.properties
+          cat android/local.properties
 
       - run: flutter pub get
 
