@@ -92,8 +92,20 @@ class FotmobClient {
   static Future<Map<String, dynamic>> getMatchDetails(String matchId) =>
       _get('matchDetails', params: {'matchId': matchId}, ttl: const Duration(seconds: 30));
 
+  static Future<Map<String, dynamic>> getMatchH2H(String matchId) =>
+      _get('matchDetails', params: {'matchId': matchId, 'tab': 'h2h'}, ttl: const Duration(minutes: 60));
+
   static Future<Map<String, dynamic>> getTeamDetails(String teamId) =>
       _get('teams', params: {'id': teamId, 'tab': 'overview', 'type': 'team', 'timeZone': 'Asia/Dhaka'});
+
+  static Future<Map<String, dynamic>> getTeamSquad(String teamId) =>
+      _get('teams', params: {'id': teamId, 'tab': 'squad', 'type': 'team', 'timeZone': 'Asia/Dhaka'});
+
+  static Future<Map<String, dynamic>> getTeamFixtures(String teamId) =>
+      _get('teams', params: {'id': teamId, 'tab': 'fixtures', 'type': 'team', 'timeZone': 'Asia/Dhaka'}, ttl: const Duration(minutes: 30));
+
+  static Future<Map<String, dynamic>> getTeamStats(String teamId) =>
+      _get('teams', params: {'id': teamId, 'tab': 'stats', 'type': 'team', 'timeZone': 'Asia/Dhaka'});
 
   static Future<Map<String, dynamic>> getPlayerData(String playerId) =>
       _get('playerData', params: {'id': playerId});
@@ -128,6 +140,24 @@ class FotmobClient {
     return _get('leagues', params: p);
   }
 
+  static Future<Map<String, dynamic>> getLeagueTable(String id, {String? season}) {
+    final p = {'id': id, 'tab': 'table', 'type': 'league', 'timeZone': 'Asia/Dhaka'};
+    if (season != null) p['season'] = season;
+    return _get('leagues', params: p);
+  }
+
+  static Future<Map<String, dynamic>> getLeagueFixtures(String id, {String? season}) {
+    final p = {'id': id, 'tab': 'fixtures', 'type': 'league', 'timeZone': 'Asia/Dhaka'};
+    if (season != null) p['season'] = season;
+    return _get('leagues', params: p, ttl: const Duration(minutes: 30));
+  }
+
+  static Future<Map<String, dynamic>> getLeagueTopList(String id, {String? season}) {
+    final p = {'id': id, 'tab': 'toplist', 'type': 'league', 'timeZone': 'Asia/Dhaka'};
+    if (season != null) p['season'] = season;
+    return _get('leagues', params: p);
+  }
+
   static Future<Map<String, dynamic>> getAllLeagues() =>
       _get('leagues');
 
@@ -153,7 +183,7 @@ class FotmobClient {
     }).toList();
   }
 
-  static Future<Map<String, dynamic>> getTeamStats(String teamId) =>
+  static Future<Map<String, dynamic>> getTeamStatsLegacy(String teamId) =>
       _get('teamStats', params: {'teamId': teamId});
 
   static String teamLogoUrl(dynamic id) =>

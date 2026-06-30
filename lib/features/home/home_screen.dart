@@ -23,6 +23,11 @@ final _newsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   }
 });
 
+final _transfersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  ref.keepAlive();
+  return FotmobClient.getTransfers();
+});
+
 // ── Safe helpers ───────────────────────────────────────────────────────────────
 Map<String, dynamic> _m(dynamic v) {
   if (v is Map<String, dynamic>) return v;
@@ -276,6 +281,9 @@ class _MatchBody extends ConsumerWidget {
         _SectionHdr(title: 'RESULTS', count: finished.length),
         ...finished.map((m) => _MatchRow(match: m)),
       ],
+
+      // Transfers Section
+      const _TransfersSection(),
 
       if (live.isEmpty && upcoming.isEmpty && finished.isEmpty)
         const Padding(
@@ -693,5 +701,76 @@ class _TeamLine extends StatelessWidget {
             color: isWinner ? AppColors.accentPrimary : AppColors.textMuted)),
         ),
     ]);
+  }
+}
+
+
+// ── Transfers Section ──────────────────────────────────────────────────────────
+class _TransfersSection extends ConsumerWidget {
+  const _TransfersSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final transfers = ref.watch(_transfersProvider);
+    return transfers.when(
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _SectionHdr(title: 'TRANSFERS', count: list.length),
+          SizedBox(
+            height: 100,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: list.length > 10 ? 10 : list.length,
+              itemBuilder: (ctx, i) {
+                final t = list[i];
+                final player = _s(t['playerName']);
+                final from = _s(t['from']);
+                final to = _s(t['to']);
+                final fee = _s(t['fee']);
+                return Container(
+                  width: 160,
+                  margin: const EdgeInsets.only(right: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(player, style: const TextStyle(color: AppColors.textPrimary,
+                        fontSize: 12, fontWeight: FontWeight.w700, fontFamily: 'Inter'),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      Expanded(child: Text(from, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10),
+                          maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(Icons.arrow_forward_rounded, size: 12, color: AppColors.accentPrimary)),
+                      Expanded(child: Text(to, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10),
+                          maxLines: 1, overflow: TextOverflow.ellipsis)),
+                    ]),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.accentGold.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(fee.isEmpty ? 'Free' : fee,
+                        style: const TextStyle(color: AppColors.accentGold, fontSize: 10, fontWeight: FontWeight.w700)),
+                    ),
+                  ]),
+                );
+              },
+            ),
+          ),
+        ]);
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
   }
 }
