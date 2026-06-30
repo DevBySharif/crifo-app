@@ -39,10 +39,10 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk-bundle
           sudo apt-get clean
-          sudo fallocate -l 8G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          sudo dd if=/dev/zero of=/swap bs=1M count=8192 status=none
+          sudo chmod 600 /swap
+          sudo mkswap /swap
+          sudo swapon /swap
           free -h
 
       - run: flutter build apk --release --target-platform android-arm64 --no-shrink
