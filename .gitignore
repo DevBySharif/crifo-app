@@ -48,3 +48,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Sensitive local config — never commit
+android/local.properties
+android/key.properties
+*.keystore
+*.jks
+.env
+.env.*

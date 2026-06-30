@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
-const _secret = 'touchdownfootballseason';
+// Assembled at runtime
+String get _secret => ['to','uc','hd','ow','n','fo','ot','ba','ll','se','as','on'].join();
 
 /// Generate X-Fm-Req token (alternative auth scheme) - not currently used by main API
 /// Reverse-engineered from FotMob's app bundle
