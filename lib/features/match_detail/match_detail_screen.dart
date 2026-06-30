@@ -732,16 +732,31 @@ class _StatsTab extends StatelessWidget {
     final teams    = _l(header['teams']);
     final homeName = teams.isNotEmpty ? _s(_m(teams[0])['name']) : '';
     final awayName = teams.length > 1 ? _s(_m(teams[1])['name']) : '';
-    final statsRoot = _m(content['stats']);
+    final statsRoot = _m(content['stats'] ?? content['matchFacts']?['stats'] ?? {});
+    final matchFacts = _m(content['matchFacts']);
 
     List groups = [];
-    final periods = _m(statsRoot['Periods']);
+    // Try all known FotMob stats paths
+    final periods = _m(statsRoot['Periods'] ?? {});
     if (periods.containsKey('All'))       groups = _l(_m(periods['All'])['stats']);
     if (groups.isEmpty && periods.containsKey('1H')) groups = _l(_m(periods['1H'])['stats']);
     if (groups.isEmpty)                   groups = _l(statsRoot['stats']);
+    if (groups.isEmpty)                   groups = statsRoot.isNotEmpty && statsRoot.values.first is List ? _l(statsRoot.values.first) : [];
+    // Try matchFacts.stats
+    if (groups.isEmpty) {
+      final mfStats = matchFacts['stats'];
+      if (mfStats is List) groups = mfStats;
+      else if (mfStats is Map) {
+        final mfPeriods = _m(mfStats['Periods'] ?? {});
+        if (mfPeriods.containsKey('All')) groups = _l(_m(mfPeriods['All'])['stats']);
+        if (groups.isEmpty) groups = _l(mfStats['stats'] ?? []);
+      }
+    }
+    // Try direct content stats array
+    if (groups.isEmpty && content['stats'] is List) groups = content['stats'] as List;
 
     if (groups.isEmpty) {
-      return const Center(child: Text('Stats not available yet', style: TextStyle(color: AppColors.textMuted)));
+      return const Center(child: Text('Stats not available for this match', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
 
     return ListView(
@@ -864,9 +879,17 @@ class _LineupTabState extends State<_LineupTab> {
   @override
   Widget build(BuildContext context) {
     final content  = _m(widget.data['content']);
-    final lineup   = _m(content['lineup']).isNotEmpty ? _m(content['lineup']) : _m(widget.data['lineup']);
+    Map<String, dynamic> lineup = {};
+    if (_m(content['lineup']).isNotEmpty) lineup = _m(content['lineup']);
+    else if (_m(content['lineups']).isNotEmpty) lineup = _m(content['lineups']);
+    else if (_m(widget.data['lineup']).isNotEmpty) lineup = _m(widget.data['lineup']);
+    // Some FotMob matches have lineup inside matchFacts
+    if (lineup['homeTeam'] == null && _m(content['matchFacts'])['lineup'] != null) {
+      lineup = _m(_m(content['matchFacts'])['lineup']);
+    }
+
     if (lineup['homeTeam'] == null && lineup['awayTeam'] == null) {
-      return const Center(child: Text('Lineup not announced yet', style: TextStyle(color: AppColors.textMuted)));
+      return const Center(child: Text('Lineup not available for this match', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
 
     final homeTeam = _m(lineup['homeTeam']);
@@ -1452,11 +1475,13 @@ class _PlayersTab extends StatelessWidget {
     final homeName  = teams.isNotEmpty ? _s(_m(teams[0])['name']) : '';
     final awayName  = teams.length > 1 ? _s(_m(teams[1])['name']) : '';
 
-    if (psRaw == null) {
-      return const Center(child: Text('Player stats not available', style: TextStyle(color: AppColors.textMuted)));
+    // Also try matchFacts playerRatings as fallback
+    final psRawFinal = psRaw ?? content['matchFacts']?['playerRatings'] ?? content['playerRatings'];
+    if (psRawFinal == null) {
+      return const Center(child: Text('Player ratings not available for this match', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
 
-    final psMap = psRaw is Map ? psRaw : <String, dynamic>{};
+    final psMap = psRawFinal is Map ? psRawFinal : <String, dynamic>{};
     final players = psMap.values.map((p) {
       final pm = _m(p);
       final topGroup = _l(pm['stats']).whereType<Map>().firstWhere(
