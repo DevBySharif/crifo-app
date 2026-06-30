@@ -1597,18 +1597,50 @@ class _CommentaryTab extends ConsumerWidget {
           itemCount: entries.length,
           itemBuilder: (ctx, i) {
             final e = entries[i];
-            // FotMob events: {minute, minuteExtra, type, description, player, team}
-            // Commentary: {minute, text, type}
-            final minNum = _s(e['minute'] ?? e['min'] ?? e['time'] ?? '');
-            final minExtra = _s(e['minuteExtra'] ?? e['minuteAddedTime'] ?? '');
+            // FotMob time can be in e['time'] as a nested object or a number
+            final timeObj = e['time'] is Map ? _m(e['time']) : null;
+            final minNum = _s(timeObj?['minute'] ?? e['minute'] ?? e['min'] ?? '');
+            final minExtra = _s(timeObj?['injuryTime'] ?? timeObj?['added'] ?? e['minuteExtra'] ?? '');
             final min = minExtra.isNotEmpty && minExtra != '0' ? '$minNum+$minExtra' : minNum;
-            final text = _s(e['text'] ?? e['comment'] ?? e['message'] ?? e['description'] ?? '');
             final type = _s(e['type'] ?? e['eventType'] ?? e['typeId'] ?? '').toLowerCase();
-            // Skip empty entries
+
+            // Build readable text from event data
+            String text = _s(e['text'] ?? e['comment'] ?? e['message'] ?? '');
+            if (text.isEmpty) {
+              final player = _m(e['player'] ?? e['scorer'] ?? e['swap'] ?? {});
+              final player2 = _m(e['assistStr'] != null ? {} : e['swap'] is Map ? _m(e['swap'])['playerIn'] ?? {} : {});
+              final pName = _s(player['name'] ?? player['firstName'] ?? '');
+              final teamName = _s(_m(e['team'])['name'] ?? '');
+              final score = _s(e['scoreStr'] ?? e['newScore'] ?? '');
+              final assist = _s(e['assistStr'] ?? _s(_m(player2)['name'] ?? ''));
+
+              if (type.contains('goal')) {
+                text = '⚽ GOAL!${pName.isNotEmpty ? ' $pName' : ''}${score.isNotEmpty ? ' ($score)' : ''}${teamName.isNotEmpty ? ' — $teamName' : ''}${assist.isNotEmpty ? '\nAssist: $assist' : ''}';
+              } else if (type.contains('yellowred') || type.contains('yellow-red')) {
+                text = '🟥 Second yellow — ${pName.isNotEmpty ? pName : 'Player'}${teamName.isNotEmpty ? ' ($teamName)' : ''}';
+              } else if (type.contains('yellow')) {
+                text = '🟨 Yellow card — ${pName.isNotEmpty ? pName : 'Player'}${teamName.isNotEmpty ? ' ($teamName)' : ''}';
+              } else if (type.contains('red')) {
+                text = '🟥 Red card — ${pName.isNotEmpty ? pName : 'Player'}${teamName.isNotEmpty ? ' ($teamName)' : ''}';
+              } else if (type.contains('substitut') || type.contains('sub')) {
+                final pOut = _s(_m(e['swap'] is Map ? e['swap'] : {})['playerOut']?['name'] ?? '');
+                final pIn  = _s(_m(e['swap'] is Map ? e['swap'] : {})['playerIn']?['name'] ?? pName);
+                text = '🔄 ${pIn.isNotEmpty ? pIn : 'Sub'} on${pOut.isNotEmpty ? ', $pOut off' : ''}${teamName.isNotEmpty ? ' — $teamName' : ''}';
+              } else if (type.contains('pen')) {
+                text = '⚽ PENALTY!${pName.isNotEmpty ? ' $pName' : ''}${score.isNotEmpty ? ' ($score)' : ''}';
+              } else if (type.contains('miss') || type.contains('saved')) {
+                text = '❌ Penalty missed${pName.isNotEmpty ? ' — $pName' : ''}';
+              } else if (type.contains('half') || type.contains('period')) {
+                text = '⏱ Half time';
+              } else if (pName.isNotEmpty) {
+                text = '$pName${teamName.isNotEmpty ? ' ($teamName)' : ''}';
+              }
+            }
+
             if (text.isEmpty && min.isEmpty) return const SizedBox.shrink();
 
-            final isGoal = type.contains('goal') || text.toLowerCase().contains('goal');
-            final isCard = type.contains('card') || text.toLowerCase().contains('yellow') || text.toLowerCase().contains('red');
+            final isGoal = type.contains('goal') || type.contains('pen') || text.startsWith('⚽');
+            final isCard = type.contains('card') || text.startsWith('🟨') || text.startsWith('🟥');
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
