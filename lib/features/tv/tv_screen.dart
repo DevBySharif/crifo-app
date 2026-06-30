@@ -3,45 +3,56 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:video_player/video_player.dart';
 import '../../core/api/tv_channels.dart';
 import '../../core/providers/tv_fullscreen_provider.dart';
 
 // ─── Sorting helpers ──────────────────────────────────────────────────────────
 
-const _catOrder = {
-  TVCategory.Sports: 0,
-  TVCategory.Football: 1,
-  TVCategory.Cricket: 2,
-  TVCategory.Bangla: 3,
-  TVCategory.News: 4,
-  TVCategory.Entertainment: 5,
-};
-
-const _popularKeywords = [
-  // BD sports — highest priority
-  't sports', 'akash go', 'akash sports', 'a sports', 'gazi tv', 'gtv',
-  // BD news / general
+// Region groups: 0=International (popular global), 1=Bangladeshi, 2=Indian, 3=Pakistani, 4=Other
+const _bdKeywords = [
   'btv', 'maasranga', 'somoy', 'jamuna', 'rtv', 'channel 9', 'channel i',
   'desh tv', 'ntv', 'independent', 'ekattor', 'dbc', 'bangla vision',
-  'channel 24', 'boishakhi', 'my tv', 'atv', 'atn bangla', 'atn news',
-  'sa tv', 'news24',
-  // International sports
-  'star sports', 'sony sports', 'sony ten', 'sony six',
-  'bein sports', 'sky sports', 'espn', 'ten sports', 'willow',
-  'fox sports', 'cricket gold', 'cricket 24',
-  // International news
-  'al jazeera', 'bbc', 'cnn', 'euronews',
-  // Entertainment
-  'zee', 'colors', 'star plus', 'star gold', 'set max',
-  'discovery', 'national geographic', 'nat geo',
+  'channel 24', 'boishakhi', 'my tv', 'atn bangla', 'atn news', 'sa tv',
+  'news24', 'gtv', 'gazi tv', 't sports', 'akash go', 'akash sports',
+  'a sports', 'duranto', 'asian tv', 'ananda tv', 'anb news', 'islamic tv',
+  'peace tv bangla',
 ];
+
+const _pakKeywords = [
+  'ptv', 'geo tv', 'geo news', 'geo sports', 'ary', 'hum tv', 'hum news',
+  'dunya news', 'samaa', 'express news', 'a sports pk', 'ten sports pk',
+  'such tv', 'capital tv', 'bol news', '92 news', 'neo news',
+];
+
+const _indKeywords = [
+  'zee', 'colors', 'star plus', 'star gold', 'set max', 'sony sports',
+  'sony ten', 'sony six', 'star sports', 'ndtv', 'aaj tak', 'india tv',
+  'republic', 'abp', 'news18', 'sun tv', 'star bharat', 'sab tv',
+  'star utsav', 'dd national', 'dd sports', 'zee news', 'times now',
+  'cricket gold', 'cricket 24', 'star vijay', 'sony sab',
+];
+
+const _intlPopularKeywords = [
+  'bein sports', 'sky sports', 'espn', 'ten sports', 'willow',
+  'fox sports', 'al jazeera', 'bbc', 'cnn', 'euronews', 'discovery',
+  'national geographic', 'nat geo', 'mbc', 'dubai sports', 'abu dhabi sports',
+];
+
+int _regionOf(String name) {
+  final n = name.toLowerCase();
+  for (final k in _bdKeywords) { if (n.contains(k)) return 1; }
+  for (final k in _pakKeywords) { if (n.contains(k)) return 3; }
+  for (final k in _indKeywords) { if (n.contains(k)) return 2; }
+  for (final k in _intlPopularKeywords) { if (n.contains(k)) return 0; }
+  return 4;
+}
 
 int _popularityRank(String name) {
   final n = name.toLowerCase();
-  for (var i = 0; i < _popularKeywords.length; i++) {
-    if (n.contains(_popularKeywords[i])) return i;
+  final all = [..._intlPopularKeywords, ..._bdKeywords, ..._indKeywords, ..._pakKeywords];
+  for (var i = 0; i < all.length; i++) {
+    if (n.contains(all[i])) return i;
   }
   return 9999;
 }
@@ -55,17 +66,18 @@ int _cdnScore(String url) {
   if (u.contains('amagi.tv') || u.contains('sofast.tv') ||
       u.contains('tubi.video') || u.contains('transmit.live')) return 4;
   if (u.contains('ercdn.net') || u.contains('daioncdn.net')) return 5;
-  if (RegExp(r'https?://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}').hasMatch(u))
-    return 9;
+  if (RegExp(r'https?://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}').hasMatch(u)) return 9;
   return 6;
 }
 
+// Region (Intl→BD→India→Pak→Other) is the primary sort key.
+// Within a region: working channels first, then popularity, then CDN reliability.
 int _channelSortKey(TVChannel ch, {int working = 1}) {
+  final region = _regionOf(ch.name);
   final pop = _popularityRank(ch.name);
   final cdn = _cdnScore(ch.streamUrl);
-  final cat = _catOrder[ch.category] ?? 9;
-  if (pop < 9999) return working * 10000 + pop * 100 + cdn * 10 + cat;
-  return working * 100000 + cdn * 1000 + cat * 100;
+  final popScore = pop < 9999 ? pop : 500;
+  return region * 1000000 + working * 100000 + popScore * 100 + cdn * 10;
 }
 
 // ─── Channel health check ─────────────────────────────────────────────────────
@@ -74,8 +86,7 @@ final _dio = Dio(BaseOptions(
   connectTimeout: const Duration(seconds: 5),
   receiveTimeout: const Duration(seconds: 8),
   headers: {
-    'User-Agent':
-        'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Mobile Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
     'Accept': '*/*',
   },
 ));
@@ -90,15 +101,12 @@ Future<Set<String>> _checkWorkingChannels(List<TVChannel> channels) async {
         if (ch.streamUrl.isEmpty) return;
         try {
           final u = ch.streamUrl.toLowerCase();
-          final isHls = u.contains('.m3u8') ||
-              u.contains('/master') ||
-              u.contains('playlist') ||
-              u.contains('chunks');
+          final isHls = u.contains('.m3u8') || u.contains('/master') ||
+              u.contains('playlist') || u.contains('chunks') ||
+              u.contains('/index') || u.contains('output/index');
           if (isHls) {
-            final res = await _dio.get<String>(
-              ch.streamUrl,
-              options: Options(responseType: ResponseType.plain),
-            );
+            final res = await _dio.get<String>(ch.streamUrl,
+                options: Options(responseType: ResponseType.plain));
             final body = res.data ?? '';
             final snippet = body.substring(0, math.min(body.length, 512));
             if (snippet.contains('#EXTM3U') || snippet.contains('#EXT-X-')) {
@@ -130,7 +138,7 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   String _query = '';
 
   TVChannel? _playing;
-  WebViewController? _playerCtrl;
+  VideoPlayerController? _vpc;
   bool _playerLoading = false;
   bool _fullscreen = false;
 
@@ -148,6 +156,7 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _vpc?.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -180,78 +189,85 @@ class _TVScreenState extends ConsumerState<TVScreen> {
 
   // ── Playback ───────────────────────────────────────────────────────────────
 
-  void _play(TVChannel ch) {
-    final pc = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.black)
-      ..setUserAgent(
-          'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko)'
-          ' Chrome/120.0.0.0 Mobile Safari/537.36');
+  int _playToken = 0;
+  bool _playerError = false;
 
-    if (pc.platform is AndroidWebViewController) {
-      (pc.platform as AndroidWebViewController)
-          .setMediaPlaybackRequiresUserGesture(false);
-    }
-
-    pc.setNavigationDelegate(NavigationDelegate(
-      onPageFinished: (_) {
-        final safe = ch.streamUrl
-            .replaceAll('\\', '\\\\')
-            .replaceAll("'", "\\'")
-            .replaceAll('\n', '');
-        pc.runJavaScript("""
-(function tryPlay(n){
-  if(typeof window.playStream==='function'){
-    window.playStream('$safe');
-  } else if(n>0){
-    setTimeout(function(){tryPlay(n-1);},200);
-  }
-})(30);
-""");
-        if (mounted) setState(() => _playerLoading = false);
-      },
-      onNavigationRequest: (r) {
-        final u = r.url;
-        if (u.startsWith('flutter-asset://')) return NavigationDecision.navigate;
-        if (u.startsWith('https://appassets.androidplatform.net'))
-          return NavigationDecision.navigate;
-        if (u.startsWith('about:')) return NavigationDecision.navigate;
-        return NavigationDecision.prevent;
-      },
-    ));
-
-    pc.loadFlutterAsset('assets/tv_player.html');
-
+  Future<void> _play(TVChannel ch) async {
+    final token = ++_playToken;
+    final oldCtrl = _vpc;
     setState(() {
       _playing = ch;
-      _playerCtrl = pc;
+      _vpc = null;
       _playerLoading = true;
+      _playerError = false;
       _fullscreen = false;
     });
+    // Dispose old controller after swapping state so UI doesn't flash old frame
+    oldCtrl?.dispose();
+
+    try {
+      final uri = Uri.parse(ch.streamUrl);
+      final ctrl = VideoPlayerController.networkUrl(
+        uri,
+        httpHeaders: {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+          'Accept': '*/*',
+          'Referer': '${uri.scheme}://${uri.host}/',
+        },
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
+      );
+
+      await ctrl.initialize().timeout(const Duration(seconds: 12));
+
+      // A newer _play() call superseded this one — discard.
+      if (token != _playToken) { ctrl.dispose(); return; }
+      if (!mounted) { ctrl.dispose(); return; }
+
+      ctrl.addListener(() {
+        if (!mounted || token != _playToken) return;
+        final err = ctrl.value.errorDescription;
+        if (err != null) {
+          setState(() { _playerLoading = false; _playerError = true; });
+        } else if (ctrl.value.isPlaying && _playerLoading) {
+          setState(() => _playerLoading = false);
+        }
+      });
+
+      await ctrl.setLooping(false);
+      ctrl.play();
+      setState(() {
+        _vpc = ctrl;
+        _playerLoading = false;
+      });
+    } catch (e) {
+      if (token != _playToken || !mounted) return;
+      setState(() { _playerLoading = false; _playerError = true; });
+    }
   }
 
   void _closePlayer() {
+    _playToken++;
+    _exitFullscreen();
+    _vpc?.dispose();
     setState(() {
       _playing = null;
-      _playerCtrl = null;
+      _vpc = null;
       _playerLoading = false;
+      _playerError = false;
       _fullscreen = false;
     });
   }
 
-  // ── Fullscreen via MainShell Stack overlay (truly covers BottomNav) ──────────
-
   void _enterFullscreen() {
-    final ctrl = _playerCtrl;
+    final vpc = _vpc;
     final ch = _playing;
-    if (ctrl == null || ch == null) return;
+    if (vpc == null || ch == null) return;
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     setState(() => _fullscreen = true);
 
-    // Inject fullscreen widget into MainShell's Stack via provider
     ref.read(tvFullscreenProvider.notifier).state = _FullscreenPage(
-      controller: ctrl,
+      controller: vpc,
       channelName: ch.name,
       onExit: _exitFullscreen,
     );
@@ -293,12 +309,14 @@ class _TVScreenState extends ConsumerState<TVScreen> {
     return AspectRatio(
       aspectRatio: 16 / 9,
       child: _PlayerStack(
-        controller: _playerCtrl,
+        controller: _vpc,
         loading: _playerLoading,
+        hasError: _playerError,
         channelName: _playing?.name ?? '',
         fullscreen: false,
         onClose: _closePlayer,
         onFullscreen: _enterFullscreen,
+        onRetry: () { if (_playing != null) _play(_playing!); },
       ),
     );
   }
@@ -308,78 +326,47 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
       child: Row(
         children: [
-          const Text(
-            'LIVE TV',
-            style: TextStyle(
-              color: Color(0xFFF0F0FF),
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              fontFamily: 'Inter',
-              letterSpacing: 1,
-            ),
-          ),
+          const Text('LIVE TV', style: TextStyle(
+            color: Color(0xFFF0F0FF), fontSize: 16,
+            fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: 1,
+          )),
           const SizedBox(width: 6),
           _checking
-              ? const SizedBox(
-                  width: 10,
-                  height: 10,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 1.5, color: Color(0xFF5B6EF5)),
-                )
+              ? const SizedBox(width: 10, height: 10,
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF00B4FF)))
               : Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF5B6EF5).withValues(alpha: 0.15),
+                    color: const Color(0xFF00B4FF).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color: const Color(0xFF5B6EF5).withValues(alpha: 0.3)),
+                    border: Border.all(color: const Color(0xFF00B4FF).withValues(alpha: 0.3)),
                   ),
-                  child: Text(
-                    '${_workingIds.length} live',
-                    style: const TextStyle(
-                      color: Color(0xFF5B6EF5),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Inter',
-                    ),
-                  ),
+                  child: Text('${_workingIds.length} live', style: const TextStyle(
+                    color: Color(0xFF00B4FF), fontSize: 10,
+                    fontWeight: FontWeight.w700, fontFamily: 'Inter',
+                  )),
                 ),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _searchCtrl,
               onChanged: (v) => setState(() => _query = v),
-              style: const TextStyle(
-                color: Color(0xFFF0F0FF),
-                fontSize: 12,
-                fontFamily: 'Inter',
-              ),
+              style: const TextStyle(color: Color(0xFFF0F0FF), fontSize: 12, fontFamily: 'Inter'),
               decoration: InputDecoration(
                 hintText: 'Search channels...',
-                hintStyle:
-                    const TextStyle(color: Color(0xFF8888AA), fontSize: 12),
-                prefixIcon: const Icon(Icons.search_rounded,
-                    color: Color(0xFF8888AA), size: 18),
-                prefixIconConstraints:
-                    const BoxConstraints(minWidth: 36, minHeight: 36),
+                hintStyle: const TextStyle(color: Color(0xFF8888AA), fontSize: 12),
+                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF8888AA), size: 18),
+                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 filled: true,
                 fillColor: const Color(0xFF16161F),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFF1E1E2E)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFF1E1E2E)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide:
-                      const BorderSide(color: Color(0xFF5B6EF5), width: 1.2),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Color(0xFF1E1E2E))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Color(0xFF1E1E2E))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Color(0xFF00B4FF), width: 1.2)),
               ),
             ),
           ),
@@ -409,29 +396,19 @@ class _TVScreenState extends ConsumerState<TVScreen> {
             onTap: () => setState(() => _cat = item.$1),
             child: Container(
               margin: const EdgeInsets.only(right: 6),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: active
-                    ? const Color(0xFF5B6EF5)
-                    : const Color(0xFF13131A),
+                color: active ? const Color(0xFF00B4FF) : const Color(0xFF13131A),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: active
-                      ? const Color(0xFF5B6EF5)
-                      : const Color(0xFF1E1E2E),
+                  color: active ? const Color(0xFF00B4FF) : const Color(0xFF1E1E2E),
                 ),
               ),
-              child: Text(
-                item.$2,
-                style: TextStyle(
-                  color: active ? Colors.white : const Color(0xFF8888AA),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Inter',
-                  letterSpacing: 0.5,
-                ),
-              ),
+              child: Text(item.$2, style: TextStyle(
+                color: active ? Colors.white : const Color(0xFF8888AA),
+                fontSize: 10, fontWeight: FontWeight.w700,
+                fontFamily: 'Inter', letterSpacing: 0.5,
+              )),
             ),
           );
         }).toList(),
@@ -442,18 +419,14 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   Widget _buildGrid() {
     final channels = _filtered;
     if (channels.isEmpty) {
-      return const Center(
-        child: Text('No channels',
-            style: TextStyle(color: Color(0xFF8888AA), fontFamily: 'Inter')),
-      );
+      return const Center(child: Text('No channels',
+          style: TextStyle(color: Color(0xFF8888AA), fontFamily: 'Inter')));
     }
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 0.82,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
+        crossAxisCount: 3, childAspectRatio: 0.82,
+        crossAxisSpacing: 8, mainAxisSpacing: 8,
       ),
       itemCount: channels.length,
       itemBuilder: (_, i) {
@@ -466,64 +439,43 @@ class _TVScreenState extends ConsumerState<TVScreen> {
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
               color: isActive
-                  ? const Color(0xFF5B6EF5).withValues(alpha: 0.12)
+                  ? const Color(0xFF00B4FF).withValues(alpha: 0.12)
                   : const Color(0xFF13131A),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isActive
-                    ? const Color(0xFF5B6EF5)
+                    ? const Color(0xFF00B4FF)
                     : isWorking
                         ? const Color(0xFF22C55E).withValues(alpha: 0.4)
                         : const Color(0xFF1E1E2E),
                 width: isActive ? 1.5 : 1,
               ),
             ),
-            child: Stack(
-              children: [
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
-                        child: _ChannelLogo(
-                            logoUrl: ch.logoUrl, name: ch.name),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
-                      child: Text(
-                        ch.name,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: isActive
-                              ? const Color(0xFF5B6EF5)
-                              : const Color(0xFFDDDDFF),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                if (isWorking && !isActive)
-                  Positioned(
-                    top: 5,
-                    right: 5,
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF22C55E),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
+            child: Stack(children: [
+              Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+                    child: _ChannelLogo(logoUrl: ch.logoUrl, name: ch.name),
                   ),
-              ],
-            ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+                  child: Text(ch.name,
+                    textAlign: TextAlign.center, maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isActive ? const Color(0xFF00B4FF) : const Color(0xFFDDDDFF),
+                      fontSize: 9, fontWeight: FontWeight.w600, fontFamily: 'Inter',
+                    )),
+                ),
+              ]),
+              if (isWorking && !isActive)
+                Positioned(top: 5, right: 5,
+                  child: Container(width: 6, height: 6,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF22C55E), shape: BoxShape.circle))),
+            ]),
           ),
         );
       },
@@ -532,10 +484,9 @@ class _TVScreenState extends ConsumerState<TVScreen> {
 }
 
 // ─── Fullscreen page ──────────────────────────────────────────────────────────
-// Pushed on ROOT navigator — guaranteed to cover BottomNavigationBar
 
 class _FullscreenPage extends StatelessWidget {
-  final WebViewController controller;
+  final VideoPlayerController controller;
   final String channelName;
   final VoidCallback onExit;
 
@@ -548,8 +499,8 @@ class _FullscreenPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final w = size.shortestSide; // portrait width
-    final h = size.longestSide;  // portrait height
+    final w = size.shortestSide;
+    final h = size.longestSide;
 
     return PopScope(
       canPop: false,
@@ -559,20 +510,20 @@ class _FullscreenPage extends StatelessWidget {
         child: SizedBox.expand(
           child: Center(
             child: OverflowBox(
-              maxWidth: h,
-              maxHeight: w,
+              maxWidth: h, maxHeight: w,
               child: Transform.rotate(
                 angle: math.pi / 2,
                 child: SizedBox(
-                  width: h,
-                  height: w,
+                  width: h, height: w,
                   child: _PlayerStack(
                     controller: controller,
                     loading: false,
+                    hasError: false,
                     channelName: channelName,
                     fullscreen: true,
                     onClose: onExit,
                     onFullscreen: onExit,
+                    onRetry: onExit,
                   ),
                 ),
               ),
@@ -587,106 +538,116 @@ class _FullscreenPage extends StatelessWidget {
 // ─── Shared player widget ─────────────────────────────────────────────────────
 
 class _PlayerStack extends StatelessWidget {
-  final WebViewController? controller;
+  final VideoPlayerController? controller;
   final bool loading;
+  final bool hasError;
   final String channelName;
   final bool fullscreen;
   final VoidCallback onClose;
   final VoidCallback onFullscreen;
+  final VoidCallback onRetry;
 
   const _PlayerStack({
     required this.controller,
     required this.loading,
+    required this.hasError,
     required this.channelName,
     required this.fullscreen,
     required this.onClose,
     required this.onFullscreen,
+    required this.onRetry,
   });
 
   @override
   Widget build(BuildContext context) {
+    final ctrl = controller;
     return Container(
       color: Colors.black,
-      child: Stack(
-        children: [
-          if (controller != null) WebViewWidget(controller: controller!),
-          if (loading)
-            Container(
-              color: Colors.black,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: CircularProgressIndicator(
-                          color: Color(0xFF5B6EF5), strokeWidth: 2.5),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      channelName,
-                      style: const TextStyle(
-                        color: Color(0xFF8888AA),
-                        fontSize: 11,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+      child: Stack(children: [
+        // Video
+        if (ctrl != null && ctrl.value.isInitialized)
+          Center(
+            child: AspectRatio(
+              aspectRatio: ctrl.value.aspectRatio,
+              child: VideoPlayer(ctrl),
             ),
-          Positioned(
-            top: 8,
-            left: 8,
-            right: 8,
-            child: Row(
-              children: [
-                _CtrlBtn(icon: Icons.close_rounded, onTap: onClose),
-                const Spacer(),
-                if (channelName.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF5B6EF5).withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 5,
-                          height: 5,
-                          decoration: const BoxDecoration(
-                              color: Colors.white, shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          channelName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'Inter',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                const Spacer(),
-                _CtrlBtn(
-                  icon: fullscreen
-                      ? Icons.fullscreen_exit_rounded
-                      : Icons.fullscreen_rounded,
-                  onTap: onFullscreen,
-                ),
-              ],
+          )
+        else
+          const SizedBox.expand(),
+
+        // Loading overlay
+        if (loading)
+          Container(
+            color: Colors.black,
+            child: Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const SizedBox(width: 28, height: 28,
+                  child: CircularProgressIndicator(color: Color(0xFF00B4FF), strokeWidth: 2.5)),
+                const SizedBox(height: 10),
+                Text(channelName, style: const TextStyle(
+                  color: Color(0xFF8888AA), fontSize: 11,
+                  fontFamily: 'Inter', fontWeight: FontWeight.w600)),
+              ]),
             ),
           ),
-        ],
-      ),
+
+        // Error state
+        if (hasError || (ctrl != null && ctrl.value.hasError))
+          Container(
+            color: Colors.black,
+            child: Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.signal_wifi_off_rounded, color: Color(0xFF8888AA), size: 36),
+                const SizedBox(height: 8),
+                const Text('Stream unavailable', style: TextStyle(
+                  color: Color(0xFF8888AA), fontSize: 12, fontFamily: 'Inter')),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: onRetry,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00B4FF),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text('Retry', style: TextStyle(
+                      color: Colors.white, fontSize: 11,
+                      fontWeight: FontWeight.w700, fontFamily: 'Inter')),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+
+        // Controls bar
+        Positioned(top: 8, left: 8, right: 8,
+          child: Row(children: [
+            _CtrlBtn(icon: Icons.close_rounded, onTap: onClose),
+            const Spacer(),
+            if (channelName.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00B4FF).withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 5, height: 5,
+                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                  const SizedBox(width: 5),
+                  Text(channelName, style: const TextStyle(
+                    color: Colors.white, fontSize: 10,
+                    fontWeight: FontWeight.w700, fontFamily: 'Inter')),
+                ]),
+              ),
+            const Spacer(),
+            _CtrlBtn(
+              icon: fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
+              onTap: onFullscreen,
+            ),
+          ]),
+        ),
+      ]),
     );
   }
 }
@@ -701,8 +662,7 @@ class _CtrlBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 30,
-        height: 30,
+        width: 30, height: 30,
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.65),
           shape: BoxShape.circle,
@@ -728,31 +688,20 @@ class _ChannelLogo extends StatelessWidget {
       child: Container(
         color: const Color(0xFF1A1A28),
         child: logoUrl.isNotEmpty
-            ? Image.network(
-                logoUrl,
-                fit: BoxFit.contain,
-                width: double.infinity,
-                height: double.infinity,
-                loadingBuilder: (_, child, progress) =>
-                    progress == null ? child : _initial(),
-                errorBuilder: (_, __, ___) => _initial(),
-              )
+            ? Image.network(logoUrl, fit: BoxFit.contain,
+                width: double.infinity, height: double.infinity,
+                loadingBuilder: (_, child, p) => p == null ? child : _initial(),
+                errorBuilder: (_, __, ___) => _initial())
             : _initial(),
       ),
     );
   }
 
   Widget _initial() {
-    return Center(
-      child: Text(
-        name.isNotEmpty ? name[0].toUpperCase() : 'T',
-        style: const TextStyle(
-          color: Color(0xFF5B6EF5),
-          fontSize: 24,
-          fontWeight: FontWeight.w800,
-          fontFamily: 'Inter',
-        ),
-      ),
-    );
+    return Center(child: Text(
+      name.isNotEmpty ? name[0].toUpperCase() : 'T',
+      style: const TextStyle(color: Color(0xFF00B4FF), fontSize: 24,
+          fontWeight: FontWeight.w800, fontFamily: 'Inter'),
+    ));
   }
 }

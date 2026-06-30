@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'colors.dart';
 
 class AppTheme {
-  // ── DARK THEME ────────────────────────────────────────────────────────────────
   static ThemeData get dark => ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
@@ -25,8 +24,8 @@ class AppTheme {
       color: AppColors.bgCard,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(16)),
-        side: BorderSide(color: AppColors.border, width: 1),
+        borderRadius: const BorderRadius.all(Radius.circular(14)),
+        side: BorderSide(color: AppColors.border, width: 0.8),
       ),
     ),
     dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 0.5, space: 0),
@@ -49,7 +48,6 @@ class AppTheme {
     ),
   );
 
-  // ── LIGHT THEME ───────────────────────────────────────────────────────────────
   static ThemeData get light => ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
@@ -71,10 +69,10 @@ class AppTheme {
     cardTheme: CardThemeData(
       color: AppColors.bgCardLight,
       elevation: 0,
-      shadowColor: Color(0x1A5B6EF5),
+      shadowColor: Color(0x1200B4FF),
       shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(16)),
-        side: BorderSide(color: AppColors.borderLightMode, width: 1),
+        borderRadius: const BorderRadius.all(Radius.circular(14)),
+        side: BorderSide(color: AppColors.borderLightMode, width: 0.8),
       ),
     ),
     dividerTheme: const DividerThemeData(color: AppColors.borderLightMode, thickness: 0.5, space: 0),

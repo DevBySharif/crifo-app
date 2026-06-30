@@ -31,8 +31,8 @@ dependencies:
   shimmer: ^3.0.0
   flutter_svg: ^2.0.10+1
 
-  # Video player (for TV) - WebView-based with hls.js/dash.js
-  webview_flutter: ^4.10.0
+  # Video player - ExoPlayer based (same as Football Eon)
+  video_player: ^2.10.1
 
   # Crypto (for FotMob token)
   crypto: ^3.0.6

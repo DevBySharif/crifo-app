@@ -33,7 +33,7 @@ List _l(dynamic v) => v is List ? v : [];
 String _s(dynamic v) => v?.toString() ?? '';
 
 String _todayKey() {
-  final now = DateTime.now().toUtc();
+  final now = DateTime.now();
   return '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
 }
 
@@ -68,17 +68,16 @@ class HomeScreen extends ConsumerWidget {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
                   child: Row(children: [
-                    // Premium CriFO wordmark
                     ShaderMask(
-                      shaderCallback: (b) => AppColors.primaryGradient.createShader(b),
+                      shaderCallback: (b) => AppColors.brandGradient.createShader(b),
                       child: const Text(
                         'CriFO',
                         style: TextStyle(
                           fontFamily: 'Oswald',
-                          fontSize: 28,
+                          fontSize: 30,
                           fontWeight: FontWeight.w700,
                           color: Colors.white,
-                          letterSpacing: 1.0,
+                          letterSpacing: 2,
                         ),
                       ),
                     ),
@@ -329,12 +328,13 @@ class _NewsBannerState extends ConsumerState<_NewsBanner> {
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted) return;
+      if (!mounted || !_controller.hasClients) return;
       final items = ref.read(_newsProvider).valueOrNull ?? [];
       final count = items.length > 5 ? 5 : items.length;
       if (count <= 1) return;
-      setState(() { _index = (_index + 1) % count; });
-      _controller.animateToPage(_index,
+      final next = (_index + 1) % count;
+      setState(() => _index = next);
+      _controller.animateToPage(next,
           duration: const Duration(milliseconds: 500), curve: Curves.easeInOutCubic);
     });
   }

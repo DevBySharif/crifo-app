@@ -56,3 +56,4 @@ android/key.properties
 *.jks
 .env
 .env.*
+*.hprof

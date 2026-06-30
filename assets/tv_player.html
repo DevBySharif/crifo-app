@@ -8,13 +8,13 @@
 html,body{width:100%;height:100%;background:#000;overflow:hidden}
 video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
 #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:10}
-#spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,0.15);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;display:none}
+#spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,0.15);border-top-color:#5B6EF5;border-radius:50%;animation:spin 0.8s linear infinite;display:none}
 #msg{margin-top:12px;color:#bbb;font-family:sans-serif;font-size:12px;font-weight:600;background:rgba(0,0,0,0.75);padding:6px 14px;border-radius:20px;display:none;white-space:nowrap}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
-<video id="v" playsinline muted></video>
+<video id="v" playsinline autoplay></video>
 <div id="overlay"><div id="spinner"></div><div id="msg"></div></div>
 <script>
 var v = document.getElementById('v');
@@ -23,90 +23,106 @@ var msg = document.getElementById('msg');
 var _hls = null;
 var _retryTimer = null;
 var _retryCount = 0;
-var MAX_RETRIES = 4;
+var MAX_RETRIES = 3;
 var _currentUrl = null;
 
-function showLoading(t) { spinner.style.display='block'; msg.textContent=t; msg.style.display='block'; }
-function showMsg(t) { spinner.style.display='none'; msg.textContent=t; msg.style.display='block'; }
-function hideOverlay() { spinner.style.display='none'; msg.style.display='none'; }
+function showLoading(t){spinner.style.display='block';msg.textContent=t;msg.style.display='block';}
+function showMsg(t){spinner.style.display='none';msg.textContent=t;msg.style.display='block';}
+function hideOverlay(){spinner.style.display='none';msg.style.display='none';}
 
-function _safePlay() {
-  v.muted = true;
-  var p = v.play();
-  if (p !== undefined) {
-    p.then(function() {
-      setTimeout(function() { v.muted = false; }, 500);
-    }).catch(function() {
-      v.muted = false;
-      v.play().catch(function() {});
+function _safePlay(){
+  v.muted=false;
+  var p=v.play();
+  if(p!==undefined){
+    p.catch(function(){
+      v.muted=true;
+      v.play().then(function(){
+        setTimeout(function(){v.muted=false;},800);
+      }).catch(function(){});
     });
-  } else {
-    setTimeout(function() { v.muted = false; }, 500);
   }
 }
 
-function _destroy() {
-  if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; }
-  if (_hls) { try { _hls.destroy(); } catch(e) {} _hls = null; }
+function _destroy(){
+  if(_retryTimer){clearTimeout(_retryTimer);_retryTimer=null;}
+  if(_hls){try{_hls.destroy();}catch(e){}  _hls=null;}
   v.pause();
   v.removeAttribute('src');
   v.load();
 }
 
-window.playStream = function(url) {
-  _currentUrl = url;
-  _retryCount = 0;
+function _tryNative(url){
+  v.src=url;
+  v.oncanplay=function(){hideOverlay();_safePlay();};
+  v.onplaying=function(){hideOverlay();};
+  v.onerror=function(){
+    if(_retryCount<MAX_RETRIES){
+      _retryCount++;
+      showLoading('Reconnecting ('+_retryCount+')...');
+      _retryTimer=setTimeout(function(){v.src=url;v.load();_safePlay();},2000*_retryCount);
+    }else{
+      showMsg('Stream unavailable');
+    }
+  };
+  _safePlay();
+}
+
+window.playStream=function(url){
+  _currentUrl=url;
+  _retryCount=0;
   _destroy();
   showLoading('Connecting...');
 
-  var isTs = url.indexOf('.m3u8') === -1 && url.indexOf('.ts') !== -1;
+  // Detect stream type
+  var lower=url.toLowerCase();
+  var isHls=lower.indexOf('.m3u8')!==-1||lower.indexOf('/master')!==-1||lower.indexOf('playlist')!==-1||lower.indexOf('chunks')!==-1||lower.indexOf('/index')!==-1||lower.indexOf('output/index')!==-1;
 
-  if (!isTs && typeof Hls !== 'undefined' && Hls.isSupported()) {
-    _hls = new Hls({
-      enableWorker: false,
-      maxBufferLength: 20,
-      maxMaxBufferLength: 30,
-      liveSyncDurationCount: 3,
-      startLevel: -1,
-      fragLoadingTimeOut: 15000,
-      manifestLoadingTimeOut: 15000,
-      levelLoadingTimeOut: 15000,
-      fragLoadingMaxRetry: 3,
-      manifestLoadingMaxRetry: 2,
+  if(isHls && typeof Hls!=='undefined' && Hls.isSupported()){
+    _hls=new Hls({
+      enableWorker:false,
+      maxBufferLength:15,
+      maxMaxBufferLength:25,
+      liveSyncDurationCount:2,
+      liveMaxLatencyDurationCount:5,
+      startLevel:-1,
+      fragLoadingTimeOut:12000,
+      manifestLoadingTimeOut:12000,
+      levelLoadingTimeOut:12000,
+      fragLoadingMaxRetry:2,
+      manifestLoadingMaxRetry:2,
+      xhrSetup:function(xhr){
+        xhr.withCredentials=false;
+      }
     });
     _hls.loadSource(url);
     _hls.attachMedia(v);
-    _hls.on(Hls.Events.MANIFEST_PARSED, function() {
+    _hls.on(Hls.Events.MANIFEST_PARSED,function(){
       hideOverlay();
       _safePlay();
-      _retryCount = 0;
+      _retryCount=0;
     });
-    _hls.on(Hls.Events.ERROR, function(evt, d) {
-      if (!d.fatal) return;
-      if (_retryCount < MAX_RETRIES) {
+    _hls.on(Hls.Events.MEDIA_ATTACHED,function(){
+      // autoplay starts
+    });
+    _hls.on(Hls.Events.ERROR,function(evt,d){
+      if(!d.fatal)return;
+      if(d.type===Hls.ErrorTypes.NETWORK_ERROR && _retryCount<MAX_RETRIES){
         _retryCount++;
-        showLoading('Reconnecting (' + _retryCount + ')...');
-        _retryTimer = setTimeout(function() { window.playStream(url); }, 2000 * _retryCount);
-      } else {
+        showLoading('Reconnecting ('+_retryCount+')...');
+        _retryTimer=setTimeout(function(){
+          if(_hls){_hls.startLoad();}else{window.playStream(url);}
+        },2500*_retryCount);
+      }else if(_retryCount<MAX_RETRIES){
+        _retryCount++;
+        showLoading('Retrying...');
+        _retryTimer=setTimeout(function(){window.playStream(url);},3000*_retryCount);
+      }else{
         showMsg('Stream unavailable');
       }
     });
-  } else {
-    // Fallback: native video (for .ts or if MSE not supported)
-    v.src = url;
-    v.oncanplay = function() { hideOverlay(); _retryCount = 0; };
-    v.onerror = function() {
-      if (_retryCount < MAX_RETRIES) {
-        _retryCount++;
-        showLoading('Reconnecting (' + _retryCount + ')...');
-        _retryTimer = setTimeout(function() {
-          v.src = url; v.load(); _safePlay();
-        }, 2000 * _retryCount);
-      } else {
-        showMsg('Cannot load stream');
-      }
-    };
-    _safePlay();
+  }else{
+    // Native fallback for .ts or direct video
+    _tryNative(url);
   }
 };
 </script>
