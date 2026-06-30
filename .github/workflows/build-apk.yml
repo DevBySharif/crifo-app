@@ -35,7 +35,13 @@ jobs:
 
       - run: flutter pub get
 
-      - run: flutter build apk --release --split-per-abi 
+      - name: Free up disk and memory
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk-bundle
+          sudo apt-get clean
+          df -h
+
+      - run: flutter build apk --release --split-per-abi --no-shrink
 
       - name: Publish Release
         if: startsWith(github.ref, 'refs/tags/v')
