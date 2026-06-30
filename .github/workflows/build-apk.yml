@@ -1,4 +1,4 @@
-﻿name: Build & Release APK
+name: Build & Release APK
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-13
 
     steps:
       - uses: actions/checkout@v4
@@ -22,28 +22,15 @@ jobs:
           flutter-version: '3.32.4'
           channel: stable
 
-      # Install the exact NDK version specified in build.gradle.kts
       - name: Install NDK
         run: echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;27.1.12297006"
 
-      # local.properties is gitignored — generate it for CI
       - name: Generate local.properties
         run: |
           echo "sdk.dir=$ANDROID_SDK_ROOT"   > android/local.properties
           echo "flutter.sdk=$FLUTTER_ROOT"   >> android/local.properties
-          cat android/local.properties
 
       - run: flutter pub get
-
-      - name: Free disk & add swap
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk-bundle
-          sudo apt-get clean
-          sudo dd if=/dev/zero of=/swap bs=1M count=8192 status=none
-          sudo chmod 600 /swap
-          sudo mkswap /swap
-          sudo swapon /swap
-          free -h
 
       - run: flutter build apk --release --target-platform android-arm64 --no-shrink
 
