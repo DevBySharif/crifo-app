@@ -1,0 +1,140 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+
+const _BASE = 'https://www.fotmob.com';
+const _API = '$_BASE/api/data';
+
+// Reverse-engineered from FotMob's _app bundle
+const _FOTMOB_KEY =
+    "[Spoken Intro: Alan Hansen & Trevor Brooking]\nI think it's bad news for the English game\nWe're not creative enough, and we're not positive enough\n\n[Refrain: Ian Broudie & Jimmy Hill]\nIt's coming home, it's coming home, it's coming\nFootball's coming home (We'll go on getting bad results)\nIt's coming home, it's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\n\n[Verse 1: Frank Skinner]\nEveryone seems to know the score, they've seen it all before\nThey just know, they're so sure\nThat England's gonna throw it away, gonna blow it away\nBut I know they can play, 'cause I remember\n\n[Chorus: All]\nThree lions on a shirt\nJules Rimet still gleaming\nThirty years of hurt\nNever stopped me dreaming\n\n[Verse 2: David Baddiel]\nSo many jokes, so many sneers\nBut all those \"Oh, so near\"s wear you down through the years\nBut I still see that tackle by Moore and when Lineker scored\nBobby belting the ball, and Nobby dancing\n\n[Chorus: All]\nThree lions on a shirt\nJules Rimet still gleaming\nThirty years of hurt\nNever stopped me dreaming\n\n[Bridge]\nEngland have done it, in the last minute of extra time!\nWhat a save, Gordon Banks!\nGood old England, England that couldn't play football!\nEngland have got it in the bag!\nI know that was then, but it could be again\n\n[Refrain: Ian Broudie]\nIt's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\n(England have done it!)\nIt's coming home, it's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\n[Chorus: All]\n(It's coming home) Three lions on a shirt\n(It's coming home, it's coming) Jules Rimet still gleaming\n(Football's coming home\nIt's coming home) Thirty years of hurt\n(It's coming home, it's coming) Never stopped me dreaming\n(Football's coming home\nIt's coming home) Three lions on a shirt\n(It's coming home, it's coming) Jules Rimet still gleaming\n(Football's coming home\nIt's coming home) Thirty years of hurt\n(It's coming home, it's coming) Never stopped me dreaming\n(Football's coming home\nIt's coming home) Three lions on a shirt\n(It's coming home, it's coming) Jules Rimet still gleaming\n(Football's coming home\nIt's coming home) Thirty years of hurt\n(It's coming home, it's coming) Never stopped me dreaming\n(Football's coming home)";
+
+String _generateXMasToken(String fullUrl) {
+  final body = {
+    'url': fullUrl,
+    'code': DateTime.now().millisecondsSinceEpoch,
+    'foo': 'production:ab158bb5c6ae907ba504afdadac27a92a4dca7c2',
+  };
+  final toSign = jsonEncode(body) + _FOTMOB_KEY;
+  final signature = sha256.convert(utf8.encode(toSign)).toString();
+  return base64.encode(utf8.encode(jsonEncode({'body': body, 'signature': signature})));
+}
+
+// In-memory response cache with 5-min TTL
+final _cache = <String, ({Map<String, dynamic> data, DateTime expiry})>{};
+
+final _dio = Dio(BaseOptions(
+  connectTimeout: const Duration(seconds: 10),
+  receiveTimeout: const Duration(seconds: 15),
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://www.fotmob.com/',
+    'Origin': 'https://www.fotmob.com',
+  },
+));
+
+class FotmobClient {
+  static Future<Map<String, dynamic>> _get(String endpoint, {Map<String, dynamic>? params, Duration ttl = const Duration(minutes: 5)}) async {
+    final query = params != null ? '?' + params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value.toString())}').join('&') : '';
+    final cacheKey = '$endpoint$query';
+    final now = DateTime.now();
+
+    // Return cached response if still valid
+    final cached = _cache[cacheKey];
+    if (cached != null && now.isBefore(cached.expiry)) return cached.data;
+
+    final fullUrl = '$_API/$endpoint$query';
+    // Generate token off main thread
+    final token = await compute(_generateXMasToken, fullUrl);
+    final res = await _dio.get(fullUrl, options: Options(headers: {'x-mas': token}));
+    final data = res.data is Map<String, dynamic>
+        ? res.data as Map<String, dynamic>
+        : res.data is Map ? (res.data as Map).cast<String, dynamic>() : <String, dynamic>{};
+
+    _cache[cacheKey] = (data: data, expiry: now.add(ttl));
+    return data;
+  }
+
+  static void invalidateCache(String endpoint) {
+    _cache.removeWhere((k, _) => k.startsWith(endpoint));
+  }
+
+  static Future<Map<String, dynamic>> getMatchesByDate(String date) =>
+      _get('matches', params: {'date': date, 'timezone': 'Asia/Dhaka', 'ccode3': 'BGD'});
+
+  static Future<Map<String, dynamic>> getMatchDetails(String matchId) =>
+      _get('matchDetails', params: {'matchId': matchId}, ttl: const Duration(seconds: 30));
+
+  static Future<Map<String, dynamic>> getTeamDetails(String teamId) =>
+      _get('teams', params: {'id': teamId, 'tab': 'overview', 'type': 'team', 'timeZone': 'Asia/Dhaka'});
+
+  static Future<Map<String, dynamic>> getPlayerData(String playerId) =>
+      _get('playerData', params: {'id': playerId});
+
+  static Future<List<Map<String, dynamic>>> search(String term) async {
+    final query = '?' + {'term': term}.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value.toString())}').join('&');
+    final fullUrl = '$_API/search/suggest$query';
+    final token = _generateXMasToken(fullUrl);
+    final res = await _dio.get(fullUrl, options: Options(headers: {'x-mas': token}));
+    final items = res.data is List ? (res.data as List) : [];
+    final results = <Map<String, dynamic>>[];
+    for (final group in items) {
+      if (group is Map) {
+        final suggestions = (group['suggestions'] as List?) ?? [];
+        for (final s in suggestions) {
+          if (s is Map) results.add(s.cast<String, dynamic>());
+        }
+      }
+    }
+    return results;
+  }
+
+  static Future<Map<String, dynamic>> getLeagueDetails(String id, {String? season}) {
+    final p = {'id': id, 'tab': 'overview', 'type': 'league', 'timeZone': 'Asia/Dhaka'};
+    if (season != null) p['season'] = season;
+    return _get('leagues', params: p);
+  }
+
+  static Future<Map<String, dynamic>> getLeagueStats(String id, {String? season}) {
+    final p = {'id': id, 'tab': 'stats', 'type': 'league', 'timeZone': 'Asia/Dhaka'};
+    if (season != null) p['season'] = season;
+    return _get('leagues', params: p);
+  }
+
+  static Future<Map<String, dynamic>> getAllLeagues() =>
+      _get('leagues');
+
+  static Future<List<Map<String, dynamic>>> getWorldNews() async {
+    final res = await _get('tlnews', params: {'id': '47', 'type': 'league', 'language': 'en-GB', 'startIndex': '0'});
+    final items = (res['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    return items.map((n) => {
+      'title': n['title']?.toString() ?? '',
+      'imageUrl': n['imageUrl']?.toString() ?? '',
+      'url': (n['page'] as Map?)?.containsKey('url') == true ? n['page']['url'].toString() : '',
+      'source': n['sourceStr']?.toString() ?? '',
+    }).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> getTransfers() async {
+    final res = await _get('transfers');
+    final items = (res['transfers'] as List?)?.cast<Map<String, dynamic>>() ?? (res as List?)?.cast<Map<String, dynamic>>() ?? [];
+    return items.map((t) => {
+      'playerName': t['name']?.toString() ?? t['playerName']?.toString() ?? '',
+      'from': t['fromClub']?.toString() ?? t['from']?.toString() ?? '',
+      'to': t['toClub']?.toString() ?? t['to']?.toString() ?? '',
+      'fee': (t['fee'] is Map) ? (t['fee']['feeText']?.toString() ?? '-') : (t['fee']?.toString() ?? '-'),
+    }).toList();
+  }
+
+  static Future<Map<String, dynamic>> getTeamStats(String teamId) =>
+      _get('teamStats', params: {'teamId': teamId});
+
+  static String teamLogoUrl(dynamic id) =>
+      'https://images.fotmob.com/image_resources/logo/teamlogo/${id}_small.png';
+
+  static String playerImageUrl(dynamic id) =>
+      'https://images.fotmob.com/image_resources/playerimages/$id.png';
+}
