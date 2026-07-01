@@ -244,7 +244,8 @@ class _SearchResults extends StatelessWidget {
               Navigator.push(context, MaterialPageRoute(builder: (_) => TeamScreen(teamId: id, teamName: name)));
             } else if (type == 'player') {
               Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(playerId: id, playerName: name)));
-            } else if (type == 'league' || type == 'tournament') {
+            } else if (type == 'league' || type == 'tournament' ||
+                       type == 'cup' || type == 'competition' || type == 'international') {
               Navigator.push(context, MaterialPageRoute(builder: (_) => LeagueScreen(leagueId: id, leagueName: name)));
             }
           },

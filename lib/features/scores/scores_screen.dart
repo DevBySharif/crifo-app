@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/api/fotmob_client.dart';
 import '../../core/theme/colors.dart';
 import '../match_detail/match_detail_screen.dart';
+import '../league/league_screen.dart';
 
 Map<String, dynamic> _m(dynamic v) {
   if (v is Map<String, dynamic>) return v;
@@ -330,8 +331,13 @@ class _LeagueBlockState extends State<_LeagueBlock> {
         : null;
 
     return Column(children: [
-      // League header
+      // League header — tap to expand/collapse, long press to open league screen
       GestureDetector(
+        onLongPress: () {
+          final id = widget.league['id'];
+          if (id != null) Navigator.push(context, MaterialPageRoute(
+            builder: (_) => LeagueScreen(leagueId: _s(id), leagueName: name)));
+        },
         onTap: () => setState(() => _expanded = !_expanded),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
@@ -346,15 +352,29 @@ class _LeagueBlockState extends State<_LeagueBlock> {
             Container(width: 2, height: 16,
               decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(1))),
             const SizedBox(width: 10),
-            if (flagUrl != null)
-              CachedNetworkImage(imageUrl: flagUrl, width: 20, height: 20,
-                errorWidget: (_, __, ___) => const Icon(Icons.sports_soccer_rounded, size: 16, color: AppColors.textMuted))
-            else
-              const Icon(Icons.sports_soccer_rounded, size: 16, color: AppColors.textMuted),
+            // League logo — tap to open league screen
+            GestureDetector(
+              onTap: () {
+                final lid = widget.league['id'];
+                if (lid != null) Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => LeagueScreen(leagueId: _s(lid), leagueName: name)));
+              },
+              child: flagUrl != null
+                ? CachedNetworkImage(imageUrl: flagUrl, width: 20, height: 20,
+                    errorWidget: (_, __, ___) => const Icon(Icons.sports_soccer_rounded, size: 16, color: AppColors.textMuted))
+                : const Icon(Icons.sports_soccer_rounded, size: 16, color: AppColors.textMuted),
+            ),
             const SizedBox(width: 10),
-            Expanded(child: Text(name,
+            Expanded(child: GestureDetector(
+              onTap: () {
+                final lid = widget.league['id'];
+                if (lid != null) Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => LeagueScreen(leagueId: _s(lid), leagueName: name)));
+              },
+              child: Text(name,
               style: const TextStyle(color: AppColors.textPrimary, fontSize: 13,
-                  fontWeight: FontWeight.w700, fontFamily: 'Inter'))),
+                  fontWeight: FontWeight.w700, fontFamily: 'Inter')),
+            )),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
