@@ -77,6 +77,48 @@ class EspnClient {
     return res.data as Map<String, dynamic>;
   }
 
+  // FotMob primaryId → TheSportsDB league ID (free, no auth)
+  static String? fotmobToSportsDbId(String fotmobId) {
+    const map = {
+      '263': '4340',  // Belarus Premier League
+      '169': '4341',  // Sweden Ettan
+      '9091': '4342', // Chile Cup
+      '9986': '4343', // Canadian Premier League
+      '287': '4344',  // UEFA Euro U19
+    };
+    return map[fotmobId];
+  }
+
+  static Future<List<Map<String, dynamic>>> getStandingsFromSportsDb(String leagueId) async {
+    try {
+      final res = await _dio.get(
+        'https://www.thesportsdb.com/api/v1/json/3/lookuptable.php?l=$leagueId&s=2026',
+      );
+      final data = res.data as Map<String, dynamic>;
+      final table = data['table'] as List? ?? [];
+      return table.map((e) {
+        final m = e as Map<String, dynamic>;
+        return {
+          'id': _s(m['idTeam']),
+          'name': _s(m['strTeam']),
+          'logo': _s(m['strTeamBadge']),
+          'played': int.tryParse(_s(m['intPlayed'])) ?? 0,
+          'wins': int.tryParse(_s(m['intWin'])) ?? 0,
+          'draws': int.tryParse(_s(m['intDraw'])) ?? 0,
+          'losses': int.tryParse(_s(m['intLoss'])) ?? 0,
+          'goalsFor': int.tryParse(_s(m['intGoalsFor'])) ?? 0,
+          'goalsAgainst': int.tryParse(_s(m['intGoalsAgainst'])) ?? 0,
+          'gd': int.tryParse(_s(m['intGoalDifference'])) ?? 0,
+          'pts': int.tryParse(_s(m['intPoints'])) ?? 0,
+        };
+      }).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static String _s(dynamic v) => v?.toString() ?? '';
+
   // FotMob primaryId → ESPN league slug mapping
   static String? fotmobToEspnSlug(String fotmobId) {
     const map = {
@@ -101,14 +143,13 @@ class EspnClient {
 
   static Future<List<Map<String, dynamic>>> getStandings(String leagueSlug) async {
     try {
-      // Try multiple ESPN standing URL patterns
+      Map<String, dynamic> data = {};
+      // Try multiple ESPN standing URLs
       final urls = [
         'https://site.api.espn.com/apis/v2/sports/soccer/$leagueSlug/standings',
         'https://site.web.api.espn.com/apis/v2/sports/soccer/$leagueSlug/standings?type=0&level=1',
         '$_BASE/$leagueSlug/standings',
       ];
-
-      Map<String, dynamic> data = {};
       for (final url in urls) {
         try {
           final res = await _dio.get(url);
@@ -119,27 +160,55 @@ class EspnClient {
         } catch (_) {}
       }
       if (data.isEmpty) return [];
-
-      // ESPN standings structure: {standings: {entries: [{team, stats, note}]}}
-      final children = data['children'] as List?;
-      if (children != null && children.isNotEmpty) {
-        // Conference/group format
-        final allRows = <Map<String, dynamic>>[];
-        for (final child in children) {
-          final entries = (child as Map)['standings']?['entries'] as List? ?? [];
-          for (final e in entries) {
-            allRows.add(_parseStandingEntry(e as Map<String, dynamic>));
-          }
-        }
-        return allRows;
-      }
-
-      final entries = data['standings']?['entries'] as List? ?? [];
-      return entries.map((e) => _parseStandingEntry(e as Map<String, dynamic>)).toList();
+      return _extractRows(data);
     } catch (_) {
       return [];
     }
   }
+
+  static List<Map<String, dynamic>> _extractRows(Map<String, dynamic> data) {
+    final allRows = <Map<String, dynamic>>[];
+
+    // Try 'groups' key (World Cup, UCL group stage)
+    final groups = data['groups'] as List?;
+    if (groups != null && groups.isNotEmpty) {
+      for (final g in groups) {
+        final gm = g as Map;
+        final entries = gm['standings']?['entries'] as List? ??
+            gm['entries'] as List? ?? [];
+        for (final e in entries) allRows.add(_parseStandingEntry(_m(e)));
+      }
+      if (allRows.isNotEmpty) return allRows;
+    }
+
+    // Try 'children' key
+    final children = data['children'] as List?;
+    if (children != null && children.isNotEmpty) {
+      for (final child in children) {
+        final cm = child as Map;
+        // children may have nested children for groups
+        final nested = cm['children'] as List?;
+        if (nested != null && nested.isNotEmpty) {
+          for (final n in nested) {
+            final entries = _m(n)['standings']?['entries'] as List? ?? [];
+            for (final e in entries) allRows.add(_parseStandingEntry(_m(e)));
+          }
+        } else {
+          final entries = cm['standings']?['entries'] as List? ?? [];
+          for (final e in entries) allRows.add(_parseStandingEntry(_m(e)));
+        }
+      }
+      if (allRows.isNotEmpty) return allRows;
+    }
+
+    // Direct standings
+    final entries = data['standings']?['entries'] as List? ?? [];
+    for (final e in entries) allRows.add(_parseStandingEntry(_m(e)));
+    return allRows;
+  }
+
+  static Map<String, dynamic> _m(dynamic v) =>
+      v is Map<String, dynamic> ? v : v is Map ? v.cast<String, dynamic>() : {};
 
   static Map<String, dynamic> _parseStandingEntry(Map<String, dynamic> e) {
     final team = e['team'] as Map? ?? {};

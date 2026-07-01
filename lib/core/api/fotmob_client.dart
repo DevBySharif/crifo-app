@@ -185,10 +185,41 @@ class FotmobClient {
     return results;
   }
 
-  static Future<Map<String, dynamic>> getLeagueDetails(String id, {String? season}) {
-    final p = {'id': id, 'tab': 'overview', 'type': 'league', 'timeZone': 'Asia/Dhaka'};
-    if (season != null) p['season'] = season;
-    return _get('leagues', params: p);
+  static Future<Map<String, dynamic>> getLeagueDetails(String id, {String? season}) async {
+    // Generate token fresh and make direct request — bypass _get retry/cache logic
+    final params = {'id': id, 'tab': 'overview', 'type': 'league', 'timeZone': 'Asia/Dhaka'};
+    if (season != null) params['season'] = season;
+    final query = '?' + params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+    final url = '$_API/leagues$query';
+    final token = _generateXMasToken(url);
+
+    final freshDio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 12),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {
+        'x-mas': token,
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.fotmob.com/leagues/$id',
+        'Origin': 'https://www.fotmob.com',
+      },
+    ));
+
+    for (int i = 0; i < 3; i++) {
+      if (i > 0) await Future.delayed(Duration(seconds: i));
+      try {
+        final token2 = _generateXMasToken(url); // fresh token each attempt
+        final res = await freshDio.get(url, options: Options(headers: {'x-mas': token2}));
+        if (res.data is Map<String, dynamic> && (res.data as Map).isNotEmpty) {
+          return res.data as Map<String, dynamic>;
+        }
+        if (res.data is Map && (res.data as Map).isNotEmpty) {
+          return (res.data as Map).cast<String, dynamic>();
+        }
+      } catch (_) {}
+    }
+    return {};
   }
 
   static Future<Map<String, dynamic>> getLeagueStats(String id, {String? season}) {

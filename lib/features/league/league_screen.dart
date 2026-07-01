@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/api/fotmob_client.dart';
 import '../../core/api/espn_client.dart';
+import '../../core/api/football_data_client.dart';
 import '../../core/theme/colors.dart';
 import '../match_detail/match_detail_screen.dart';
 import '../team/team_screen.dart';
@@ -27,11 +28,29 @@ final _leagueProvider = AutoDisposeFutureProvider.family<Map<String, dynamic>, S
     fetchError = e.toString();
   }
 
-  // ESPN standings fallback — always try, free & no auth
+  // football-data.org → ESPN → FotMob fallback chain
   List<Map<String, dynamic>> espnStandings = [];
-  final espnSlug = EspnClient.fotmobToEspnSlug(id);
-  if (espnSlug != null) {
-    try { espnStandings = await EspnClient.getStandings(espnSlug); } catch (_) {}
+
+  // 1. football-data.org (best, always works for major leagues)
+  final fdCode = FootballDataClient.getCode(id);
+  if (fdCode != null) {
+    try {
+      // Try grouped first (World Cup, UCL), then simple
+      final grouped = await FootballDataClient.getAllGroupStandings(fdCode);
+      if (grouped.isNotEmpty) {
+        espnStandings = grouped;
+      } else {
+        espnStandings = await FootballDataClient.getStandings(fdCode);
+      }
+    } catch (_) {}
+  }
+
+  // 2. ESPN fallback
+  if (espnStandings.isEmpty) {
+    final espnSlug = EspnClient.fotmobToEspnSlug(id);
+    if (espnSlug != null) {
+      try { espnStandings = await EspnClient.getStandings(espnSlug); } catch (_) {}
+    }
   }
 
   // If FotMob worked, also try individual tabs
@@ -133,9 +152,19 @@ class _TableTab extends StatelessWidget {
     final tables = _l(tableRaw);
 
     if (tables.isEmpty) {
-      // ESPN fallback
       if (espnRows.isNotEmpty) return _buildEspnTable(context, espnRows);
-      return const Center(child: Text('Table not available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
+      // Show what was attempted
+      return Center(child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.table_chart_outlined, color: AppColors.textMuted, size: 40),
+          const SizedBox(height: 12),
+          const Text('Table not available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter', fontSize: 14)),
+          const SizedBox(height: 4),
+          Text('ESPN rows: ${espnRows.length}', style: const TextStyle(color: AppColors.textMuted, fontFamily: 'Inter', fontSize: 10)),
+          Text('FotMob raw: ${raw.keys.take(5).join(", ")}', style: const TextStyle(color: AppColors.textMuted, fontFamily: 'Inter', fontSize: 10)),
+        ]),
+      ));
     }
 
     // Dig into first element
@@ -204,12 +233,36 @@ class _TableTab extends StatelessWidget {
   }
 
   Widget _buildEspnTable(BuildContext context, List<Map<String, dynamic>> rows) {
+    // Build items list with group headers
+    final items = <dynamic>[];
+    String lastGroup = '';
+    for (final r in rows) {
+      final g = _s(r['group']);
+      if (g.isNotEmpty && g != lastGroup) {
+        items.add(g); // group header
+        lastGroup = g;
+      }
+      items.add(r);
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.all(8),
-      itemCount: rows.length,
+      itemCount: items.isEmpty ? rows.length : items.length,
       itemBuilder: (ctx, i) {
-        final r = rows[i];
-        final pos = i + 1;
+        final item = items.isEmpty ? rows[i] : items[i];
+
+        // Group header
+        if (item is String) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+            child: Text(item, style: const TextStyle(
+              color: AppColors.accentPrimary, fontSize: 12,
+              fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: 1)),
+          );
+        }
+
+        final r = item as Map<String, dynamic>;
+        final pos = (r['pos'] as int?) ?? (i + 1);
         final name = _s(r['name']);
         final logo = _s(r['logo']);
         final pts = r['pts']?.toString() ?? '0';
