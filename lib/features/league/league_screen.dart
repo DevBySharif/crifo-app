@@ -21,11 +21,13 @@ final _leagueProvider = FutureProvider.family<Map<String, dynamic>, String>((ref
   final details = await FotmobClient.getLeagueDetails(id);
   Map<String, dynamic> stats = {};
   Map<String, dynamic> topList = {};
+  Map<String, dynamic> fixtures = {};
   List<Map<String, dynamic>> news = [];
   try { stats = await FotmobClient.getLeagueStats(id); } catch (_) {}
   try { topList = await FotmobClient.getLeagueTopList(id); } catch (_) {}
+  try { fixtures = await FotmobClient.getLeagueFixtures(id); } catch (_) {}
   try { news = await FotmobClient.getLeagueNews(id); } catch (_) {}
-  return {'details': details, 'stats': stats, 'topList': topList, 'news': news};
+  return {'details': details, 'stats': stats, 'topList': topList, 'fixtures': fixtures, 'news': news};
 });
 
 class LeagueScreen extends ConsumerStatefulWidget {
@@ -75,7 +77,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
       body: data.when(
         data: (d) => TabBarView(controller: _tabs, children: [
           _TableTab(details: _m(d['details'])),
-          _FixturesTab(details: _m(d['details'])),
+          _FixturesTab(details: _m(d['details']), fixturesData: _m(d['fixtures'])),
           _StatsTab(stats: _m(d['stats']), topList: _m(d['topList']), details: _m(d['details'])),
           _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
         ]),
@@ -98,9 +100,15 @@ class _TableTab extends StatelessWidget {
       return const Center(child: Text('No standings available', style: TextStyle(color: AppColors.textMuted)));
     }
 
-    // Each table entry has: all, home, away, and description
-    // `all` contains the actual rows
-    final rows = _l(_m(tables.first)['all'] ?? _m(tables.first)['data'] ?? tables.first is List ? tables.first : []);
+    // FotMob table: each entry has 'all'/'home'/'away' with rows, or is a direct list
+    List rows = [];
+    for (final t in tables) {
+      final tm = _m(t);
+      if (tm['all'] != null) { rows = _l(tm['all']); break; }
+      if (tm['data'] != null) { rows = _l(tm['data']); break; }
+      if (t is List && (t as List).isNotEmpty) { rows = t; break; }
+    }
+    if (rows.isEmpty && tables.first is List) rows = tables.first as List;
     if (rows.isEmpty) {
       return const Center(child: Text('No table data', style: TextStyle(color: AppColors.textMuted)));
     }
@@ -159,13 +167,27 @@ class _TableTab extends StatelessWidget {
 
 class _FixturesTab extends ConsumerWidget {
   final Map<String, dynamic> details;
-  const _FixturesTab({required this.details});
+  final Map<String, dynamic> fixturesData;
+  const _FixturesTab({required this.details, required this.fixturesData});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final fixtures = _l(details['fixtures'] ?? details['matches'] ?? []);
+    // Try dedicated fixtures endpoint first, then fall back to details
+    List fixtures = [];
+    if (fixturesData.isNotEmpty) {
+      fixtures = _l(fixturesData['fixtures'] ?? fixturesData['matches'] ?? fixturesData['allMatches'] ?? []);
+      // FotMob fixtures endpoint: data.fixtures.allFixtures.fixtures
+      if (fixtures.isEmpty) fixtures = _l(_m(_m(fixturesData['fixtures'])['allFixtures'])['fixtures']);
+      if (fixtures.isEmpty) {
+        // Try iterating rounds
+        final rounds = fixturesData.values.whereType<List>().expand((e) => e).toList();
+        if (rounds.isNotEmpty) fixtures = rounds;
+      }
+    }
+    if (fixtures.isEmpty) fixtures = _l(details['fixtures'] ?? details['matches'] ?? []);
+
     if (fixtures.isEmpty) {
-      return const Center(child: Text('No fixtures available', style: TextStyle(color: AppColors.textMuted)));
+      return const Center(child: Text('No fixtures available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(8),
@@ -174,11 +196,43 @@ class _FixturesTab extends ConsumerWidget {
         final m = _m(fixtures[i]);
         final home = _m(m['home']);
         final away = _m(m['away']);
-        final time = _s(m['time'] ?? m['status']?['utcTime'] ?? '');
-        return ListTile(
-          leading: Text(time.length >= 10 ? time.substring(0, 10) : time, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
-          title: Text('${_s(home['name'])} vs ${_s(away['name'])}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 13)),
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MatchDetailScreen(matchId: _s(m['id'])))),
+        final status = _m(m['status']);
+        final score = _s(status['scoreStr']);
+        final finished = status['finished'] == true;
+        final isLive = status['started'] == true && !finished;
+        final utc = _s(status['utcTime'] ?? m['time'] ?? '');
+        String timeStr = utc.length >= 10 ? utc.substring(0, 10) : utc;
+        if (utc.length >= 16) {
+          try {
+            final dt = DateTime.parse(utc).toLocal();
+            timeStr = '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
+          } catch (_) {}
+        }
+
+        return GestureDetector(
+          onTap: () { final mid = _s(m['id']); if (mid.isNotEmpty) Navigator.push(context, MaterialPageRoute(builder: (_) => MatchDetailScreen(matchId: mid))); },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5))),
+            child: Row(children: [
+              SizedBox(width: 56, child: Text(timeStr, style: const TextStyle(color: AppColors.textMuted, fontSize: 10, fontFamily: 'Inter'))),
+              Expanded(child: Text(_s(home['name']), style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isLive ? AppColors.live.withOpacity(0.12) : AppColors.bgElevated,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  score.isNotEmpty ? score : 'vs',
+                  style: TextStyle(fontFamily: 'Oswald', fontSize: 13, fontWeight: FontWeight.w700,
+                    color: isLive ? AppColors.live : finished ? AppColors.textSecondary : AppColors.textMuted),
+                ),
+              ),
+              Expanded(child: Text(_s(away['name']), style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w500), textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
+            ]),
+          ),
         );
       },
     );

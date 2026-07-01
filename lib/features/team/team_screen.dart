@@ -431,14 +431,21 @@ class _TeamStatsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     // Try various paths FotMob uses for team stats
     // FotMob team stats: various paths depending on endpoint
-    final statsObj = _m(data['stats'] ?? data['topLists'] ?? data['overview'] ?? data);
-    final topLists = _l(
-      statsObj['topLists'] ??
-      statsObj['stats'] ??
-      statsObj['playerStats'] ??
-      data['topLists'] ??
-      []
-    );
+    // FotMob teams/stats returns {topLists: [...]} at root
+    List topLists = [];
+    // Try direct root topLists
+    if (data['topLists'] is List) topLists = data['topLists'] as List;
+    // Try nested under 'stats'
+    if (topLists.isEmpty && data['stats'] is Map) {
+      final s = _m(data['stats']);
+      if (s['topLists'] is List) topLists = s['topLists'] as List;
+      else if (s['playerStats'] is List) topLists = s['playerStats'] as List;
+    }
+    // Try overview's stats
+    if (topLists.isEmpty && data['overview'] is Map) {
+      final ov = _m(data['overview']);
+      if (ov['topLists'] is List) topLists = ov['topLists'] as List;
+    }
 
     if (topLists.isEmpty) {
       return const Center(child: Text('No stats available', style: TextStyle(color: AppColors.textMuted)));
