@@ -101,8 +101,24 @@ class EspnClient {
 
   static Future<List<Map<String, dynamic>>> getStandings(String leagueSlug) async {
     try {
-      final res = await _dio.get('$_BASE/$leagueSlug/standings');
-      final data = res.data as Map<String, dynamic>;
+      // Try multiple ESPN standing URL patterns
+      final urls = [
+        'https://site.api.espn.com/apis/v2/sports/soccer/$leagueSlug/standings',
+        'https://site.web.api.espn.com/apis/v2/sports/soccer/$leagueSlug/standings?type=0&level=1',
+        '$_BASE/$leagueSlug/standings',
+      ];
+
+      Map<String, dynamic> data = {};
+      for (final url in urls) {
+        try {
+          final res = await _dio.get(url);
+          if (res.data is Map && (res.data as Map).isNotEmpty) {
+            data = res.data as Map<String, dynamic>;
+            break;
+          }
+        } catch (_) {}
+      }
+      if (data.isEmpty) return [];
 
       // ESPN standings structure: {standings: {entries: [{team, stats, note}]}}
       final children = data['children'] as List?;
