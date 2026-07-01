@@ -95,20 +95,27 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
       body: data.when(
         data: (d) {
           final raw = _m(d['raw']);
-          return RefreshIndicator(
-            color: AppColors.accentPrimary,
-            onRefresh: () async => ref.invalidate(_leagueProvider(widget.leagueId)),
-            child: TabBarView(controller: _tabs, children: [
-              _TableTab(raw: raw, fetchError: _s(d['fetchError']),
-                espnRows: (d['espnStandings'] as List?)?.cast<Map<String,dynamic>>() ?? []),
-              _FixturesTab(raw: raw, existingMatches: widget.existingMatches),
-              _StatsTab(raw: raw),
-              _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
-            ]),
-          );
+          final espnRows = (d['espnStandings'] as List?)?.cast<Map<String,dynamic>>() ?? [];
+          return TabBarView(controller: _tabs, children: [
+            _TableTab(raw: raw, espnRows: espnRows),
+            _FixturesTab(raw: raw, existingMatches: widget.existingMatches),
+            _StatsTab(raw: raw),
+            _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
+          ]);
         },
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
-        error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: AppColors.textMuted))),
+        error: (e, _) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Failed to load', style: TextStyle(color: AppColors.textMuted)),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => ref.invalidate(_leagueProvider(widget.leagueId)),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              decoration: BoxDecoration(color: AppColors.accentPrimary, borderRadius: BorderRadius.circular(20)),
+              child: const Text('Retry', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ])),
       ),
     );
   }
