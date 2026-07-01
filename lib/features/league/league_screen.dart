@@ -95,13 +95,17 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
       body: data.when(
         data: (d) {
           final raw = _m(d['raw']);
-          return TabBarView(controller: _tabs, children: [
-            _TableTab(raw: raw, fetchError: _s(d['fetchError']),
-              espnRows: (d['espnStandings'] as List?)?.cast<Map<String,dynamic>>() ?? []),
-            _FixturesTab(raw: raw, existingMatches: widget.existingMatches),
-            _StatsTab(raw: raw),
-            _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
-          ]);
+          return RefreshIndicator(
+            color: AppColors.accentPrimary,
+            onRefresh: () async => ref.invalidate(_leagueProvider(widget.leagueId)),
+            child: TabBarView(controller: _tabs, children: [
+              _TableTab(raw: raw, fetchError: _s(d['fetchError']),
+                espnRows: (d['espnStandings'] as List?)?.cast<Map<String,dynamic>>() ?? []),
+              _FixturesTab(raw: raw, existingMatches: widget.existingMatches),
+              _StatsTab(raw: raw),
+              _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
+            ]),
+          );
         },
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
         error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: AppColors.textMuted))),
@@ -344,18 +348,21 @@ class _StatsTab extends StatelessWidget {
     final overview = _m(raw['overview']);
 
 
-    // Correct paths from debug:
-    // stats: {players: [...sections], teams: [...], ...}
-    // overview: {topPlayers: [...], ...}
-    List topListSections = _l(statsData['players']);
+    // stats: {players: [...sections], teams: [...sections]}
+    final playerSections = _l(statsData['players']);
+    final teamSections = _l(statsData['teams']);
+    final overviewTopPlayers = _l(overview['topPlayers']);
 
-    // overview.topPlayers is another source
-    if (topListSections.isEmpty) {
-      topListSections = _l(overview['topPlayers']);
+    final allSections = [...playerSections, ...teamSections];
+    if (allSections.isEmpty && overviewTopPlayers.isNotEmpty) {
+      return _buildTopList(context, overviewTopPlayers);
     }
+    if (allSections.isNotEmpty) return _buildTopList(context, allSections);
 
-    if (topListSections.isNotEmpty) return _buildTopList(context, topListSections);
-
+    // Nothing available
+    if (statsData.isEmpty) {
+      return const Center(child: Text('Stats not available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
+    }
     List topScorers = [];
     if (topScorers.isEmpty) {
       return const Center(child: Text('Stats not available for this league', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));

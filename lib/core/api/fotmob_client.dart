@@ -73,9 +73,9 @@ class FotmobClient {
 
     Map<String, dynamic> data = <String, dynamic>{};
 
-    // Retry up to 3 times — FotMob sometimes returns null on first request
-    for (int attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) await Future.delayed(Duration(milliseconds: 500 * attempt));
+    // Retry up to 4 times — FotMob rate-limits league endpoints
+    for (int attempt = 0; attempt < 4; attempt++) {
+      if (attempt > 0) await Future.delayed(Duration(milliseconds: 800 * attempt));
 
       try {
         final res = await _dio.get(fullUrl, options: Options(headers: {'x-mas': token}));
