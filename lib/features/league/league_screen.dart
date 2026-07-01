@@ -17,7 +17,7 @@ List _l(dynamic v) => v is List ? v : [];
 String _s(dynamic v) => v?.toString() ?? '';
 int _i(dynamic v) => int.tryParse(_s(v)) ?? 0;
 
-final _leagueProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, id) async {
+final _leagueProvider = AutoDisposeFutureProvider.family<Map<String, dynamic>, String>((ref, id) async {
   Map<String, dynamic> raw = {};
   String fetchError = '';
   try {
@@ -25,8 +25,18 @@ final _leagueProvider = FutureProvider.family<Map<String, dynamic>, String>((ref
   } catch (e) {
     fetchError = e.toString();
   }
-  // FotMob returns: {table:[{data:{table:{all:[rows]}}}], stats:{...}, fixtures:{...}, overview:{...}}
-  // Pass the raw response directly — tabs extract their own data
+
+  // If raw is empty (API returned null), try individual tab fetches
+  if (raw.isEmpty || raw['table'] == null) {
+    try { final r = await FotmobClient.getLeagueTable(id); if (r.isNotEmpty) raw['table'] = r['table']; } catch (_) {}
+  }
+  if (raw['stats'] == null) {
+    try { final r = await FotmobClient.getLeagueStats(id); if (r.isNotEmpty) raw = {...raw, ...r}; } catch (_) {}
+  }
+  if (raw['fixtures'] == null) {
+    try { final r = await FotmobClient.getLeagueFixtures(id); if (r.isNotEmpty) raw['fixtures'] = r['fixtures'] ?? r; } catch (_) {}
+  }
+
   List<Map<String, dynamic>> news = [];
   try { news = await FotmobClient.getLeagueNews(id); } catch (_) {}
   return {'raw': raw, 'news': news, 'fetchError': fetchError};
@@ -35,7 +45,8 @@ final _leagueProvider = FutureProvider.family<Map<String, dynamic>, String>((ref
 class LeagueScreen extends ConsumerStatefulWidget {
   final String leagueId;
   final String? leagueName;
-  const LeagueScreen({super.key, required this.leagueId, this.leagueName});
+  final List existingMatches;
+  const LeagueScreen({super.key, required this.leagueId, this.leagueName, this.existingMatches = const []});
 
   @override
   ConsumerState<LeagueScreen> createState() => _LeagueScreenState();
@@ -81,7 +92,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
           final raw = _m(d['raw']);
           return TabBarView(controller: _tabs, children: [
             _TableTab(raw: raw, fetchError: _s(d['fetchError'])),
-            _FixturesTab(raw: raw),
+            _FixturesTab(raw: raw, existingMatches: widget.existingMatches),
             _StatsTab(raw: raw),
             _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
           ]);
@@ -100,25 +111,33 @@ class _TableTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Confirmed path from logs: raw['table'][0]['data']['table']['all']
-    final tables = _l(raw['table']);
-    List rows = [];
-    for (final t in tables) {
-      final tm = _m(t);
-      // Path: {data: {table: {all: [...]}}}
-      final data = _m(tm['data']);
-      final tableInData = _m(data['table']);
-      if (tableInData['all'] != null) { rows = _l(tableInData['all']); break; }
-      if (tableInData['data'] != null) { rows = _l(tableInData['data']); break; }
-      // Fallback paths
-      if (data['all'] != null) { rows = _l(data['all']); break; }
-      if (tm['all'] != null) { rows = _l(tm['all']); break; }
-      if (t is List && (t as List).isNotEmpty) { rows = t; break; }
+    final tableRaw = raw['table'];
+    final tables = _l(tableRaw);
+
+    if (tables.isEmpty) {
+      return const Center(child: Text('Table not available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
 
-    if (rows.isEmpty) {
-      return const Center(child: Text('No standings available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
+    // Dig into first element
+    final first = tables.first;
+    final firstMap = _m(first);
+    final firstData = _m(firstMap['data']);
+    final firstTableInData = _m(firstData['table']);
+    final allRows = firstTableInData['all'];
+
+    if (allRows == null) {
+      return SingleChildScrollView(padding: const EdgeInsets.all(10), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('tables.length: ${tables.length}', style: const TextStyle(color: AppColors.accentGold, fontSize: 10)),
+        Text('first type: ${first?.runtimeType}', style: const TextStyle(color: AppColors.accentGold, fontSize: 10)),
+        Text('firstMap keys: ${firstMap.keys.join(", ")}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 10)),
+        Text('firstData keys: ${firstData.keys.join(", ")}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 10)),
+        Text('firstTableInData keys: ${firstTableInData.keys.join(", ")}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 10)),
+        Text('allRows: ${allRows?.runtimeType ?? "null"}', style: const TextStyle(color: AppColors.accentRed, fontSize: 10)),
+      ]));
     }
+
+    List rows = _l(allRows);
 
     return ListView.builder(
       padding: const EdgeInsets.all(8),
@@ -174,26 +193,42 @@ class _TableTab extends StatelessWidget {
 
 class _FixturesTab extends StatelessWidget {
   final Map<String, dynamic> raw;
-  const _FixturesTab({required this.raw});
+  final List existingMatches;
+  const _FixturesTab({required this.raw, this.existingMatches = const []});
 
   @override
   Widget build(BuildContext context) {
     // raw['fixtures'] has the fixtures data
-    // raw['fixtures'] → {allFixtures: {fixtures: [...]}, previousFixtures: [...], nextMatch: [...]}
-    final fixturesObj = _m(raw['fixtures']);
-    List fixtures = _l(_m(fixturesObj['allFixtures'])['fixtures']);
-    if (fixtures.isEmpty) fixtures = _l(fixturesObj['previousFixtures']);
-    if (fixtures.isEmpty) fixtures = _l(fixturesObj['nextMatch']);
-    if (fixtures.isEmpty) {
-      for (final v in fixturesObj.values) {
-        if (v is List && (v as List).isNotEmpty) { fixtures = v; break; }
-        if (v is Map) {
-          final inner = _l(_m(v)['fixtures'] ?? _m(v)['matches'] ?? []);
-          if (inner.isNotEmpty) { fixtures = inner; break; }
+    // raw['fixtures'] structure — try multiple paths
+    final fixturesVal = raw['fixtures'];
+    List fixtures = [];
+    if (fixturesVal is List) {
+      fixtures = fixturesVal;
+    } else if (fixturesVal is Map) {
+      final fixturesObj = _m(fixturesVal);
+      fixtures = _l(_m(fixturesObj['allFixtures'])['fixtures']);
+      if (fixtures.isEmpty) fixtures = _l(fixturesObj['fixtures']);
+      if (fixtures.isEmpty) fixtures = _l(fixturesObj['previousFixtures']);
+      if (fixtures.isEmpty) fixtures = _l(fixturesObj['nextMatch']);
+      if (fixtures.isEmpty) {
+        for (final v in fixturesObj.values) {
+          if (v is List && (v as List).isNotEmpty) { fixtures = v; break; }
+          if (v is Map) {
+            final inner = _l(_m(v)['fixtures'] ?? _m(v)['matches'] ?? []);
+            if (inner.isNotEmpty) { fixtures = inner; break; }
+          }
         }
       }
     }
+    // Also try overview.matches
+    if (fixtures.isEmpty) {
+      fixtures = _l(_m(raw['overview'])['matches'] ?? _m(raw['overview'])['leagueOverviewMatches'] ?? []);
+    }
 
+    // Fallback: use matches data passed from scores screen
+    if (fixtures.isEmpty && existingMatches.isNotEmpty) {
+      fixtures = existingMatches;
+    }
     if (fixtures.isEmpty) {
       return const Center(child: Text('No fixtures available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
@@ -253,14 +288,23 @@ class _StatsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // raw['stats'] has topLists / topScorers
     final statsData = _m(raw['stats']);
-    List topListSections = _l(statsData['topLists'] ?? statsData['playerStats'] ?? []);
+    final overview = _m(raw['overview']);
+
+
+    // Correct paths from debug:
+    // stats: {players: [...sections], teams: [...], ...}
+    // overview: {topPlayers: [...], ...}
+    List topListSections = _l(statsData['players']);
+
+    // overview.topPlayers is another source
+    if (topListSections.isEmpty) {
+      topListSections = _l(overview['topPlayers']);
+    }
+
     if (topListSections.isNotEmpty) return _buildTopList(context, topListSections);
 
-    // Fallback: topScorers from overview
-    final overview = _m(raw['overview']);
-    List topScorers = _l(statsData['topScorers'] ?? overview['topScorers'] ?? []);
+    List topScorers = [];
     if (topScorers.isEmpty) {
       return const Center(child: Text('Stats not available for this league', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }

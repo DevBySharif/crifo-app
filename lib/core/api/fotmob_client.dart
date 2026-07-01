@@ -70,26 +70,34 @@ class FotmobClient {
 
     final fullUrl = '$_API/$endpoint$query';
     final token = _generateXMasToken(fullUrl);
-    final res = await _dio.get(fullUrl, options: Options(headers: {'x-mas': token}));
-
-    // Debug: throw if empty so error is visible
-    final rawType = res.data?.runtimeType ?? 'null';
-    final status = res.statusCode ?? 0;
 
     Map<String, dynamic> data = <String, dynamic>{};
-    if (res.data is Map<String, dynamic>) {
-      data = res.data as Map<String, dynamic>;
-    } else if (res.data is Map) {
-      data = (res.data as Map).cast<String, dynamic>();
-    } else if (res.data is List) {
-      data = {'items': res.data as List};
-    } else {
-      // Throw so caller can see the real error
-      throw Exception('API $endpoint returned $status / $rawType');
+
+    // Retry up to 3 times — FotMob sometimes returns null on first request
+    for (int attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await Future.delayed(Duration(milliseconds: 500 * attempt));
+
+      try {
+        final res = await _dio.get(fullUrl, options: Options(headers: {'x-mas': token}));
+        if (res.data is Map<String, dynamic>) {
+          data = res.data as Map<String, dynamic>;
+        } else if (res.data is Map) {
+          data = (res.data as Map).cast<String, dynamic>();
+        } else if (res.data is List) {
+          data = {'items': res.data as List};
+        }
+        // res.data == null means JSON null response → retry
+        if (data.isNotEmpty) break;
+      } catch (_) {
+        if (attempt == 2) break;
+      }
     }
 
-    _cache[cacheKey] = (data: data, expiry: now.add(ttl));
-    _pruneCache();
+    // Only cache non-empty successful responses
+    if (data.isNotEmpty) {
+      _cache[cacheKey] = (data: data, expiry: now.add(ttl));
+      _pruneCache();
+    }
     return data;
   }
 

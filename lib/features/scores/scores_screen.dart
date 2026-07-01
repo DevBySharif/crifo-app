@@ -325,7 +325,7 @@ class _LeagueBlockState extends State<_LeagueBlock> {
   @override
   Widget build(BuildContext context) {
     final name = _s(widget.league['name']);
-    final id   = widget.league['id'];
+    final id = widget.league['primaryId'] ?? widget.league['parentLeagueId'] ?? widget.league['id'];
     final flagUrl = id != null
         ? 'https://images.fotmob.com/image_resources/logo/leaguelogo/${id}_small.png'
         : null;
@@ -357,7 +357,7 @@ class _LeagueBlockState extends State<_LeagueBlock> {
               onTap: () {
                 final lid = widget.league['id'];
                 if (lid != null) Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => LeagueScreen(leagueId: _s(lid), leagueName: name)));
+                  builder: (_) => LeagueScreen(leagueId: _s(lid), leagueName: name, existingMatches: _l(widget.league['matches']))));
               },
               child: flagUrl != null
                 ? CachedNetworkImage(imageUrl: flagUrl, width: 20, height: 20,
@@ -369,7 +369,7 @@ class _LeagueBlockState extends State<_LeagueBlock> {
               onTap: () {
                 final lid = widget.league['id'];
                 if (lid != null) Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => LeagueScreen(leagueId: _s(lid), leagueName: name)));
+                  builder: (_) => LeagueScreen(leagueId: _s(lid), leagueName: name, existingMatches: _l(widget.league['matches']))));
               },
               child: Text(name,
               style: const TextStyle(color: AppColors.textPrimary, fontSize: 13,
