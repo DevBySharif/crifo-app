@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/api/fotmob_client.dart';
+import '../../core/api/espn_client.dart';
 import '../../core/theme/colors.dart';
 import '../match_detail/match_detail_screen.dart';
 import '../team/team_screen.dart';
@@ -26,12 +27,16 @@ final _leagueProvider = AutoDisposeFutureProvider.family<Map<String, dynamic>, S
     fetchError = e.toString();
   }
 
-  // If raw is empty (API returned null), try individual tab fetches
+  // ESPN standings fallback — always try, free & no auth
+  List<Map<String, dynamic>> espnStandings = [];
+  final espnSlug = EspnClient.fotmobToEspnSlug(id);
+  if (espnSlug != null) {
+    try { espnStandings = await EspnClient.getStandings(espnSlug); } catch (_) {}
+  }
+
+  // If FotMob worked, also try individual tabs
   if (raw.isEmpty || raw['table'] == null) {
     try { final r = await FotmobClient.getLeagueTable(id); if (r.isNotEmpty) raw['table'] = r['table']; } catch (_) {}
-  }
-  if (raw['stats'] == null) {
-    try { final r = await FotmobClient.getLeagueStats(id); if (r.isNotEmpty) raw = {...raw, ...r}; } catch (_) {}
   }
   if (raw['fixtures'] == null) {
     try { final r = await FotmobClient.getLeagueFixtures(id); if (r.isNotEmpty) raw['fixtures'] = r['fixtures'] ?? r; } catch (_) {}
@@ -39,7 +44,7 @@ final _leagueProvider = AutoDisposeFutureProvider.family<Map<String, dynamic>, S
 
   List<Map<String, dynamic>> news = [];
   try { news = await FotmobClient.getLeagueNews(id); } catch (_) {}
-  return {'raw': raw, 'news': news, 'fetchError': fetchError};
+  return {'raw': raw, 'espnStandings': espnStandings, 'news': news, 'fetchError': fetchError};
 });
 
 class LeagueScreen extends ConsumerStatefulWidget {
@@ -91,7 +96,8 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
         data: (d) {
           final raw = _m(d['raw']);
           return TabBarView(controller: _tabs, children: [
-            _TableTab(raw: raw, fetchError: _s(d['fetchError'])),
+            _TableTab(raw: raw, fetchError: _s(d['fetchError']),
+              espnRows: (d['espnStandings'] as List?)?.cast<Map<String,dynamic>>() ?? []),
             _FixturesTab(raw: raw, existingMatches: widget.existingMatches),
             _StatsTab(raw: raw),
             _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
@@ -107,7 +113,8 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
 class _TableTab extends StatelessWidget {
   final Map<String, dynamic> raw;
   final String fetchError;
-  const _TableTab({required this.raw, this.fetchError = ''});
+  final List<Map<String, dynamic>> espnRows;
+  const _TableTab({required this.raw, this.fetchError = '', this.espnRows = const []});
 
   @override
   Widget build(BuildContext context) {
@@ -115,6 +122,8 @@ class _TableTab extends StatelessWidget {
     final tables = _l(tableRaw);
 
     if (tables.isEmpty) {
+      // ESPN fallback
+      if (espnRows.isNotEmpty) return _buildEspnTable(context, espnRows);
       return const Center(child: Text('Table not available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
 
@@ -126,15 +135,8 @@ class _TableTab extends StatelessWidget {
     final allRows = firstTableInData['all'];
 
     if (allRows == null) {
-      return SingleChildScrollView(padding: const EdgeInsets.all(10), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('tables.length: ${tables.length}', style: const TextStyle(color: AppColors.accentGold, fontSize: 10)),
-        Text('first type: ${first?.runtimeType}', style: const TextStyle(color: AppColors.accentGold, fontSize: 10)),
-        Text('firstMap keys: ${firstMap.keys.join(", ")}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 10)),
-        Text('firstData keys: ${firstData.keys.join(", ")}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 10)),
-        Text('firstTableInData keys: ${firstTableInData.keys.join(", ")}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 10)),
-        Text('allRows: ${allRows?.runtimeType ?? "null"}', style: const TextStyle(color: AppColors.accentRed, fontSize: 10)),
-      ]));
+      if (espnRows.isNotEmpty) return _buildEspnTable(context, espnRows);
+      return const Center(child: Text('Table not available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
 
     List rows = _l(allRows);
@@ -186,6 +188,56 @@ class _TableTab extends StatelessWidget {
             SizedBox(width: 28, child: Text(pts, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary), textAlign: TextAlign.center)),
           ]),
         ));
+      },
+    );
+  }
+
+  Widget _buildEspnTable(BuildContext context, List<Map<String, dynamic>> rows) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: rows.length,
+      itemBuilder: (ctx, i) {
+        final r = rows[i];
+        final pos = i + 1;
+        final name = _s(r['name']);
+        final logo = _s(r['logo']);
+        final pts = r['pts']?.toString() ?? '0';
+        final p = r['played']?.toString() ?? '0';
+        final w = r['wins']?.toString() ?? '0';
+        final d = r['draws']?.toString() ?? '0';
+        final l = r['losses']?.toString() ?? '0';
+        final gd = r['gd'] ?? 0;
+
+        return GestureDetector(
+          onTap: () {
+            final id = _s(r['id']);
+            if (id.isNotEmpty) Navigator.push(context, MaterialPageRoute(
+              builder: (_) => TeamScreen(teamId: id, teamName: name)));
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5))),
+            child: Row(children: [
+              SizedBox(width: 28, child: Text('$pos', style: TextStyle(fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: pos <= 4 ? AppColors.accentPrimary : AppColors.textSecondary))),
+              if (logo.isNotEmpty)
+                CachedNetworkImage(imageUrl: logo, width: 18, height: 18,
+                  errorWidget: (_, __, ___) => const SizedBox(width: 18))
+              else
+                const SizedBox(width: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 12), overflow: TextOverflow.ellipsis)),
+              SizedBox(width: 24, child: Text(p, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11), textAlign: TextAlign.center)),
+              SizedBox(width: 24, child: Text(w, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11), textAlign: TextAlign.center)),
+              SizedBox(width: 24, child: Text(d, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11), textAlign: TextAlign.center)),
+              SizedBox(width: 24, child: Text(l, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11), textAlign: TextAlign.center)),
+              SizedBox(width: 28, child: Text('$gd', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                color: (gd as int) > 0 ? AppColors.accentGreen : gd < 0 ? AppColors.accentRed : AppColors.textSecondary), textAlign: TextAlign.center)),
+              SizedBox(width: 28, child: Text(pts, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary), textAlign: TextAlign.center)),
+            ]),
+          ),
+        );
       },
     );
   }
