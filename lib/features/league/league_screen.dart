@@ -18,16 +18,18 @@ String _s(dynamic v) => v?.toString() ?? '';
 int _i(dynamic v) => int.tryParse(_s(v)) ?? 0;
 
 final _leagueProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, id) async {
-  final details = await FotmobClient.getLeagueDetails(id);
-  Map<String, dynamic> stats = {};
-  Map<String, dynamic> topList = {};
-  Map<String, dynamic> fixtures = {};
+  Map<String, dynamic> raw = {};
+  String fetchError = '';
+  try {
+    raw = await FotmobClient.getLeagueDetails(id);
+  } catch (e) {
+    fetchError = e.toString();
+  }
+  // FotMob returns: {table:[{data:{table:{all:[rows]}}}], stats:{...}, fixtures:{...}, overview:{...}}
+  // Pass the raw response directly — tabs extract their own data
   List<Map<String, dynamic>> news = [];
-  try { stats = await FotmobClient.getLeagueStats(id); } catch (_) {}
-  try { topList = await FotmobClient.getLeagueTopList(id); } catch (_) {}
-  try { fixtures = await FotmobClient.getLeagueFixtures(id); } catch (_) {}
   try { news = await FotmobClient.getLeagueNews(id); } catch (_) {}
-  return {'details': details, 'stats': stats, 'topList': topList, 'fixtures': fixtures, 'news': news};
+  return {'raw': raw, 'news': news, 'fetchError': fetchError};
 });
 
 class LeagueScreen extends ConsumerStatefulWidget {
@@ -75,12 +77,15 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
         ),
       ),
       body: data.when(
-        data: (d) => TabBarView(controller: _tabs, children: [
-          _TableTab(details: _m(d['details'])),
-          _FixturesTab(details: _m(d['details']), fixturesData: _m(d['fixtures'])),
-          _StatsTab(stats: _m(d['stats']), topList: _m(d['topList']), details: _m(d['details'])),
-          _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
-        ]),
+        data: (d) {
+          final raw = _m(d['raw']);
+          return TabBarView(controller: _tabs, children: [
+            _TableTab(raw: raw, fetchError: _s(d['fetchError'])),
+            _FixturesTab(raw: raw),
+            _StatsTab(raw: raw),
+            _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
+          ]);
+        },
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
         error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: AppColors.textMuted))),
       ),
@@ -89,38 +94,30 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
 }
 
 class _TableTab extends StatelessWidget {
-  final Map<String, dynamic> details;
-  const _TableTab({required this.details});
+  final Map<String, dynamic> raw;
+  final String fetchError;
+  const _TableTab({required this.raw, this.fetchError = ''});
 
   @override
   Widget build(BuildContext context) {
-    final tables = _l(details['table']);
-
-    if (tables.isEmpty) {
-      return const Center(child: Text('No standings available', style: TextStyle(color: AppColors.textMuted)));
-    }
-
-    // FotMob table structures vary by league/season:
-    // 1. [{all: {table: [rows]}, home: {...}, away: {...}}]  — group/league table
-    // 2. [{data: [rows]}]  — knockout/alternate
-    // 3. [[rows]]  — flat list of rows directly
-    // 4. [{table: [rows]}]  — nested table key
+    // Confirmed path from logs: raw['table'][0]['data']['table']['all']
+    final tables = _l(raw['table']);
     List rows = [];
     for (final t in tables) {
-      if (t is List && (t as List).isNotEmpty) { rows = t; break; }
       final tm = _m(t);
-      // Try 'all' → {table: [...]} or direct list
-      final allVal = tm['all'];
-      if (allVal is Map) {
-        final allRows = _l(_m(allVal)['table'] ?? _m(allVal)['data'] ?? []);
-        if (allRows.isNotEmpty) { rows = allRows; break; }
-      } else if (allVal is List && (allVal as List).isNotEmpty) { rows = allVal; break; }
-      // Try 'table' directly
-      if (tm['table'] is List && (_l(tm['table'])).isNotEmpty) { rows = _l(tm['table']); break; }
-      if (tm['data'] is List && (_l(tm['data'])).isNotEmpty) { rows = _l(tm['data']); break; }
+      // Path: {data: {table: {all: [...]}}}
+      final data = _m(tm['data']);
+      final tableInData = _m(data['table']);
+      if (tableInData['all'] != null) { rows = _l(tableInData['all']); break; }
+      if (tableInData['data'] != null) { rows = _l(tableInData['data']); break; }
+      // Fallback paths
+      if (data['all'] != null) { rows = _l(data['all']); break; }
+      if (tm['all'] != null) { rows = _l(tm['all']); break; }
+      if (t is List && (t as List).isNotEmpty) { rows = t; break; }
     }
+
     if (rows.isEmpty) {
-      return const Center(child: Text('No table data', style: TextStyle(color: AppColors.textMuted)));
+      return const Center(child: Text('No standings available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
 
     return ListView.builder(
@@ -175,32 +172,27 @@ class _TableTab extends StatelessWidget {
   }
 }
 
-class _FixturesTab extends ConsumerWidget {
-  final Map<String, dynamic> details;
-  final Map<String, dynamic> fixturesData;
-  const _FixturesTab({required this.details, required this.fixturesData});
+class _FixturesTab extends StatelessWidget {
+  final Map<String, dynamic> raw;
+  const _FixturesTab({required this.raw});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Try dedicated fixtures endpoint first, then fall back to details
-    List fixtures = [];
-    if (fixturesData.isNotEmpty) {
-      // FotMob fixtures: try all known paths
-      fixtures = _l(fixturesData['fixtures'] ?? fixturesData['matches'] ?? fixturesData['allMatches'] ?? []);
-      if (fixtures.isEmpty) fixtures = _l(_m(_m(fixturesData['fixtures'])['allFixtures'])['fixtures']);
-      if (fixtures.isEmpty) fixtures = _l(_m(fixturesData['allFixtures'])['fixtures']);
-      if (fixtures.isEmpty) fixtures = _l(fixturesData['previousFixtures']);
-      if (fixtures.isEmpty) fixtures = _l(fixturesData['nextMatch']);
-      // Try collecting from all list values in response
-      if (fixtures.isEmpty) {
-        for (final v in fixturesData.values) {
-          if (v is List && (v as List).isNotEmpty && (v as List).first is Map) {
-            fixtures = v; break;
-          }
+  Widget build(BuildContext context) {
+    // raw['fixtures'] has the fixtures data
+    // raw['fixtures'] → {allFixtures: {fixtures: [...]}, previousFixtures: [...], nextMatch: [...]}
+    final fixturesObj = _m(raw['fixtures']);
+    List fixtures = _l(_m(fixturesObj['allFixtures'])['fixtures']);
+    if (fixtures.isEmpty) fixtures = _l(fixturesObj['previousFixtures']);
+    if (fixtures.isEmpty) fixtures = _l(fixturesObj['nextMatch']);
+    if (fixtures.isEmpty) {
+      for (final v in fixturesObj.values) {
+        if (v is List && (v as List).isNotEmpty) { fixtures = v; break; }
+        if (v is Map) {
+          final inner = _l(_m(v)['fixtures'] ?? _m(v)['matches'] ?? []);
+          if (inner.isNotEmpty) { fixtures = inner; break; }
         }
       }
     }
-    if (fixtures.isEmpty) fixtures = _l(details['fixtures'] ?? details['matches'] ?? details['previousFixtures'] ?? []);
 
     if (fixtures.isEmpty) {
       return const Center(child: Text('No fixtures available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
@@ -256,32 +248,19 @@ class _FixturesTab extends ConsumerWidget {
 }
 
 class _StatsTab extends StatelessWidget {
-  final Map<String, dynamic> stats;
-  final Map<String, dynamic> topList;
-  final Map<String, dynamic> details;
-  const _StatsTab({required this.stats, required this.topList, required this.details});
+  final Map<String, dynamic> raw;
+  const _StatsTab({required this.raw});
 
   @override
   Widget build(BuildContext context) {
-    // Try topList first (richer data), then stats fallback
-    // Try all known paths for FotMob topList data
-    List topListSections = _l(topList['topLists'] ?? topList['playerStats'] ?? topList['stats'] ?? []);
-    if (topListSections.isEmpty && topList.isNotEmpty) {
-      // Try iterating all keys to find a list of stat sections
-      for (final v in topList.values) {
-        if (v is List && (v as List).isNotEmpty && (v as List).first is Map) {
-          topListSections = v; break;
-        }
-      }
-    }
+    // raw['stats'] has topLists / topScorers
+    final statsData = _m(raw['stats']);
+    List topListSections = _l(statsData['topLists'] ?? statsData['playerStats'] ?? []);
     if (topListSections.isNotEmpty) return _buildTopList(context, topListSections);
 
-    List topScorers = _l(stats['topScorers'] ?? stats['scorers'] ?? stats['top_players'] ?? stats['topList'] ?? []);
-    if (topScorers.isEmpty && stats.isNotEmpty) {
-      for (final v in stats.values) {
-        if (v is List && (v as List).isNotEmpty) { topScorers = v; break; }
-      }
-    }
+    // Fallback: topScorers from overview
+    final overview = _m(raw['overview']);
+    List topScorers = _l(statsData['topScorers'] ?? overview['topScorers'] ?? []);
     if (topScorers.isEmpty) {
       return const Center(child: Text('Stats not available for this league', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
@@ -423,7 +402,7 @@ class _LeagueNewsTab extends StatelessWidget {
             if (url.isNotEmpty) {
               try {
                 final uri = Uri.parse(url.startsWith('http') ? url : 'https://www.fotmob.com$url');
-                if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
               } catch (_) {}
             }
           },

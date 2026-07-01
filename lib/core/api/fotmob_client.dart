@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 
 const _BASE = 'https://www.fotmob.com';
 const _API = '$_BASE/api/data';
@@ -70,12 +69,24 @@ class FotmobClient {
     if (cached != null && now.isBefore(cached.expiry)) return cached.data;
 
     final fullUrl = '$_API/$endpoint$query';
-    // Generate token off main thread
-    final token = await compute(_generateXMasToken, fullUrl);
+    final token = _generateXMasToken(fullUrl);
     final res = await _dio.get(fullUrl, options: Options(headers: {'x-mas': token}));
-    final data = res.data is Map<String, dynamic>
-        ? res.data as Map<String, dynamic>
-        : res.data is Map ? (res.data as Map).cast<String, dynamic>() : <String, dynamic>{};
+
+    // Debug: throw if empty so error is visible
+    final rawType = res.data?.runtimeType ?? 'null';
+    final status = res.statusCode ?? 0;
+
+    Map<String, dynamic> data = <String, dynamic>{};
+    if (res.data is Map<String, dynamic>) {
+      data = res.data as Map<String, dynamic>;
+    } else if (res.data is Map) {
+      data = (res.data as Map).cast<String, dynamic>();
+    } else if (res.data is List) {
+      data = {'items': res.data as List};
+    } else {
+      // Throw so caller can see the real error
+      throw Exception('API $endpoint returned $status / $rawType');
+    }
 
     _cache[cacheKey] = (data: data, expiry: now.add(ttl));
     _pruneCache();
