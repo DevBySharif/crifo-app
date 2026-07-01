@@ -397,7 +397,11 @@ class _MatchItem extends StatelessWidget {
     final isLive   = status['started'] == true && status['finished'] == false;
     final finished = status['finished'] == true;
     final score    = _s(status['scoreStr']);
-    final minute   = _s(_m(status['liveTime'])['short']);
+    // liveTime can be a map {short, long} or a string directly
+    final liveTime = status['liveTime'];
+    final minute = liveTime is Map
+        ? _s((liveTime is Map<String,dynamic> ? liveTime : Map<String,dynamic>.from(liveTime as Map))['short'])
+        : _s(liveTime);
     final parts    = score.split('-');
     final hG       = parts.isNotEmpty ? int.tryParse(parts.first.trim()) ?? -1 : -1;
     final aG       = parts.length > 1 ? int.tryParse(parts.last.trim()) ?? -1 : -1;

@@ -6,6 +6,7 @@ import '../../core/api/fotmob_client.dart';
 import '../../core/theme/colors.dart';
 import '../match_detail/match_detail_screen.dart';
 import '../team/team_screen.dart';
+import '../player/player_screen.dart';
 
 Map<String, dynamic> _m(dynamic v) {
   if (v is Map<String, dynamic>) return v;
@@ -19,10 +20,12 @@ int _i(dynamic v) => int.tryParse(_s(v)) ?? 0;
 final _leagueProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, id) async {
   final details = await FotmobClient.getLeagueDetails(id);
   Map<String, dynamic> stats = {};
+  Map<String, dynamic> topList = {};
   List<Map<String, dynamic>> news = [];
   try { stats = await FotmobClient.getLeagueStats(id); } catch (_) {}
+  try { topList = await FotmobClient.getLeagueTopList(id); } catch (_) {}
   try { news = await FotmobClient.getLeagueNews(id); } catch (_) {}
-  return {'details': details, 'stats': stats, 'news': news};
+  return {'details': details, 'stats': stats, 'topList': topList, 'news': news};
 });
 
 class LeagueScreen extends ConsumerStatefulWidget {
@@ -73,7 +76,7 @@ class _LeagueScreenState extends ConsumerState<LeagueScreen>
         data: (d) => TabBarView(controller: _tabs, children: [
           _TableTab(details: _m(d['details'])),
           _FixturesTab(details: _m(d['details'])),
-          _StatsTab(stats: _m(d['stats']), details: _m(d['details'])),
+          _StatsTab(stats: _m(d['stats']), topList: _m(d['topList']), details: _m(d['details'])),
           _LeagueNewsTab(news: (d['news'] as List?)?.cast<Map<String, dynamic>>() ?? []),
         ]),
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
@@ -184,14 +187,19 @@ class _FixturesTab extends ConsumerWidget {
 
 class _StatsTab extends StatelessWidget {
   final Map<String, dynamic> stats;
+  final Map<String, dynamic> topList;
   final Map<String, dynamic> details;
-  const _StatsTab({required this.stats, required this.details});
+  const _StatsTab({required this.stats, required this.topList, required this.details});
 
   @override
   Widget build(BuildContext context) {
-    final topScorers = _l(stats['topScorers'] ?? stats['scorers'] ?? stats['top_players'] ?? []);
+    // Try topList first (richer data), then stats fallback
+    final topListSections = _l(topList['topLists'] ?? topList['playerStats'] ?? []);
+    if (topListSections.isNotEmpty) return _buildTopList(context, topListSections);
+
+    final topScorers = _l(stats['topScorers'] ?? stats['scorers'] ?? stats['top_players'] ?? stats['topList'] ?? []);
     if (topScorers.isEmpty) {
-      return const Center(child: Text('No stats available', style: TextStyle(color: AppColors.textMuted)));
+      return const Center(child: Text('Stats not available for this league', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(8),
@@ -236,6 +244,72 @@ class _StatsTab extends StatelessWidget {
           ]),
         );
       },
+    );
+  }
+
+  Widget _buildTopList(BuildContext context, List sections) {
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: sections.map((section) {
+        final sec = _m(section);
+        final title = _s(sec['header'] ?? sec['title'] ?? sec['name'] ?? '');
+        final players = _l(sec['topList'] ?? sec['players'] ?? sec['items'] ?? []);
+        if (players.isEmpty) return const SizedBox.shrink();
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 16, 4, 10),
+            child: Row(children: [
+              Container(width: 3, height: 14, decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [AppColors.accentBlue, AppColors.accentPurple]),
+                borderRadius: BorderRadius.circular(2),
+              )),
+              const SizedBox(width: 8),
+              Text(title.toUpperCase(), style: const TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted, letterSpacing: 1.5)),
+            ]),
+          ),
+          ...players.take(10).toList().asMap().entries.map((e) {
+            final idx = e.key;
+            final p = _m(e.value);
+            final name = _s(p['name'] ?? p['playerName'] ?? '');
+            final pid = _s(p['id'] ?? p['playerId'] ?? '');
+            final val = _s(p['value'] ?? p['statValue'] ?? p['goals'] ?? p['assists'] ?? '');
+            final teamName = _s(p['teamName'] ?? _m(p['team'])['name'] ?? '');
+            return GestureDetector(
+              onTap: () { if (pid.isNotEmpty) Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(playerId: pid, playerName: name))); },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.bgCard,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(children: [
+                  SizedBox(width: 22, child: Text('${idx + 1}', style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600))),
+                  if (pid.isNotEmpty)
+                    ClipOval(child: CachedNetworkImage(imageUrl: FotmobClient.playerImageUrl(pid), width: 32, height: 32, fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Container(width: 32, height: 32, color: AppColors.bgElevated, child: const Icon(Icons.person, size: 18, color: AppColors.textMuted))))
+                  else
+                    Container(width: 32, height: 32, decoration: const BoxDecoration(color: AppColors.bgElevated, shape: BoxShape.circle),
+                      child: const Icon(Icons.person, size: 18, color: AppColors.textMuted)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    if (teamName.isNotEmpty) Text(teamName, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                  ])),
+                  Container(
+                    width: 36, height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(gradient: AppColors.primaryGradient, borderRadius: BorderRadius.circular(10)),
+                    child: Text(val, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800, fontFamily: 'Oswald')),
+                  ),
+                ]),
+              ),
+            );
+          }),
+        ]);
+      }).toList(),
     );
   }
 }

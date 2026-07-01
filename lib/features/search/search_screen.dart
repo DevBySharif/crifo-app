@@ -227,6 +227,14 @@ class _SearchResults extends StatelessWidget {
         final type = _s(hit['type']).toLowerCase();
         final id   = _s(hit['id']);
         final name = _s(hit['name']).isNotEmpty ? _s(hit['name']) : _s(hit['teamName']);
+        // Subtitle: team for player, country for team/league, score for match
+        final subtitle = type == 'player'
+            ? _s(hit['teamName'] ?? hit['team'] ?? '')
+            : type == 'team'
+                ? _s(hit['leagueName'] ?? hit['country'] ?? hit['league'] ?? '')
+                : type == 'match'
+                    ? '${_s(hit['teamName'] ?? '')} ${_s(hit['scoreStr'] ?? '')}'.trim()
+                    : _s(hit['country'] ?? hit['parentLeague'] ?? '');
 
         return GestureDetector(
           onTap: () {
@@ -255,16 +263,24 @@ class _SearchResults extends StatelessWidget {
                 Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14,
                     fontWeight: FontWeight.w600, fontFamily: 'Inter')),
                 const SizedBox(height: 3),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: _typeColor(type).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(4),
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _typeColor(type).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(type.toUpperCase(), style: TextStyle(
+                      fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.8,
+                      color: _typeColor(type), fontFamily: 'Inter')),
                   ),
-                  child: Text(type.toUpperCase(), style: TextStyle(
-                    fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.8,
-                    color: _typeColor(type), fontFamily: 'Inter')),
-                ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(subtitle, style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 11, fontFamily: 'Inter'),
+                      maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ],
+                ]),
               ])),
               const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 18),
             ]),
@@ -295,6 +311,7 @@ class _ResultAvatar extends StatelessWidget {
     String? url;
     if (type == 'team') url = FotmobClient.teamLogoUrl(id);
     else if (type == 'player') url = FotmobClient.playerImageUrl(id);
+    else if (type == 'league' || type == 'tournament') url = 'https://images.fotmob.com/image_resources/logo/leaguelogo/${id}_small.png';
 
     return Container(
       width: 46, height: 46,

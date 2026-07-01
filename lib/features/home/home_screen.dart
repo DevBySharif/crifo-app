@@ -518,7 +518,7 @@ class _LiveCard extends StatelessWidget {
     final home   = _m(match['home']);
     final away   = _m(match['away']);
     final score  = _s(status['scoreStr']);
-    final minute = _s(_m(status['liveTime'])['short']);
+    final _lt = status['liveTime']; final minute = _lt is Map ? _s(_m(_lt)['short']) : _s(_lt);
 
     return GestureDetector(
       onTap: () {
@@ -603,7 +603,7 @@ class _MatchRow extends StatelessWidget {
     final isLive   = status['started'] == true && status['finished'] == false;
     final finished = status['finished'] == true;
     final score    = _s(status['scoreStr']);
-    final minute   = _s(_m(status['liveTime'])['short']);
+    final liveTimeRaw = status["liveTime"]; final minute = liveTimeRaw is Map ? _s(_m(liveTimeRaw)["short"]) : _s(liveTimeRaw);
 
     final parts   = score.split('-');
     final hG      = parts.isNotEmpty ? int.tryParse(parts.first.trim()) ?? -1 : -1;

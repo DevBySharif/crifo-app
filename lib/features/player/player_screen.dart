@@ -76,7 +76,21 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
   String _infoVal(String key) {
     for (final item in _l(widget.data['playerInformation'])) {
       final m = _m(item);
-      if (_s(m['translationKey']) == key) return _s(_m(m['value'])['fallback']);
+      if (_s(m['translationKey']) == key) {
+        final val = m['value'];
+        if (val == null) return '';
+        if (val is String) return val;
+        if (val is Map) return _s(_m(val)['fallback'] ?? _m(val)['key'] ?? '');
+        return val.toString();
+      }
+    }
+    return '';
+  }
+
+  String _infoValAny(List<String> keys) {
+    for (final k in keys) {
+      final v = _infoVal(k);
+      if (v.isNotEmpty) return v;
     }
     return '';
   }
@@ -87,7 +101,7 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
     final name = _s(data['name']);
     final posDesc = _m(data['positionDescription']);
     final position = _s(_m(posDesc['primaryPosition'])['label']);
-    final country = _infoVal('country_sentencecase');
+    final country = _infoValAny(['country_sentencecase', 'country', 'nationality_sentencecase', 'nationality']);
     final primTeam = _m(data['primaryTeam']);
     final club = _s(primTeam['teamName']);
     final clubId = _s(primTeam['teamId']);
