@@ -100,15 +100,25 @@ class _TableTab extends StatelessWidget {
       return const Center(child: Text('No standings available', style: TextStyle(color: AppColors.textMuted)));
     }
 
-    // FotMob table: each entry has 'all'/'home'/'away' with rows, or is a direct list
+    // FotMob table structures vary by league/season:
+    // 1. [{all: {table: [rows]}, home: {...}, away: {...}}]  — group/league table
+    // 2. [{data: [rows]}]  — knockout/alternate
+    // 3. [[rows]]  — flat list of rows directly
+    // 4. [{table: [rows]}]  — nested table key
     List rows = [];
     for (final t in tables) {
-      final tm = _m(t);
-      if (tm['all'] != null) { rows = _l(tm['all']); break; }
-      if (tm['data'] != null) { rows = _l(tm['data']); break; }
       if (t is List && (t as List).isNotEmpty) { rows = t; break; }
+      final tm = _m(t);
+      // Try 'all' → {table: [...]} or direct list
+      final allVal = tm['all'];
+      if (allVal is Map) {
+        final allRows = _l(_m(allVal)['table'] ?? _m(allVal)['data'] ?? []);
+        if (allRows.isNotEmpty) { rows = allRows; break; }
+      } else if (allVal is List && (allVal as List).isNotEmpty) { rows = allVal; break; }
+      // Try 'table' directly
+      if (tm['table'] is List && (_l(tm['table'])).isNotEmpty) { rows = _l(tm['table']); break; }
+      if (tm['data'] is List && (_l(tm['data'])).isNotEmpty) { rows = _l(tm['data']); break; }
     }
-    if (rows.isEmpty && tables.first is List) rows = tables.first as List;
     if (rows.isEmpty) {
       return const Center(child: Text('No table data', style: TextStyle(color: AppColors.textMuted)));
     }
@@ -175,16 +185,22 @@ class _FixturesTab extends ConsumerWidget {
     // Try dedicated fixtures endpoint first, then fall back to details
     List fixtures = [];
     if (fixturesData.isNotEmpty) {
+      // FotMob fixtures: try all known paths
       fixtures = _l(fixturesData['fixtures'] ?? fixturesData['matches'] ?? fixturesData['allMatches'] ?? []);
-      // FotMob fixtures endpoint: data.fixtures.allFixtures.fixtures
       if (fixtures.isEmpty) fixtures = _l(_m(_m(fixturesData['fixtures'])['allFixtures'])['fixtures']);
+      if (fixtures.isEmpty) fixtures = _l(_m(fixturesData['allFixtures'])['fixtures']);
+      if (fixtures.isEmpty) fixtures = _l(fixturesData['previousFixtures']);
+      if (fixtures.isEmpty) fixtures = _l(fixturesData['nextMatch']);
+      // Try collecting from all list values in response
       if (fixtures.isEmpty) {
-        // Try iterating rounds
-        final rounds = fixturesData.values.whereType<List>().expand((e) => e).toList();
-        if (rounds.isNotEmpty) fixtures = rounds;
+        for (final v in fixturesData.values) {
+          if (v is List && (v as List).isNotEmpty && (v as List).first is Map) {
+            fixtures = v; break;
+          }
+        }
       }
     }
-    if (fixtures.isEmpty) fixtures = _l(details['fixtures'] ?? details['matches'] ?? []);
+    if (fixtures.isEmpty) fixtures = _l(details['fixtures'] ?? details['matches'] ?? details['previousFixtures'] ?? []);
 
     if (fixtures.isEmpty) {
       return const Center(child: Text('No fixtures available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
@@ -248,10 +264,24 @@ class _StatsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Try topList first (richer data), then stats fallback
-    final topListSections = _l(topList['topLists'] ?? topList['playerStats'] ?? []);
+    // Try all known paths for FotMob topList data
+    List topListSections = _l(topList['topLists'] ?? topList['playerStats'] ?? topList['stats'] ?? []);
+    if (topListSections.isEmpty && topList.isNotEmpty) {
+      // Try iterating all keys to find a list of stat sections
+      for (final v in topList.values) {
+        if (v is List && (v as List).isNotEmpty && (v as List).first is Map) {
+          topListSections = v; break;
+        }
+      }
+    }
     if (topListSections.isNotEmpty) return _buildTopList(context, topListSections);
 
-    final topScorers = _l(stats['topScorers'] ?? stats['scorers'] ?? stats['top_players'] ?? stats['topList'] ?? []);
+    List topScorers = _l(stats['topScorers'] ?? stats['scorers'] ?? stats['top_players'] ?? stats['topList'] ?? []);
+    if (topScorers.isEmpty && stats.isNotEmpty) {
+      for (final v in stats.values) {
+        if (v is List && (v as List).isNotEmpty) { topScorers = v; break; }
+      }
+    }
     if (topScorers.isEmpty) {
       return const Center(child: Text('Stats not available for this league', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
     }
