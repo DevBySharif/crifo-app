@@ -80,11 +80,12 @@ class EspnClient {
   // FotMob primaryId → TheSportsDB league ID (free, no auth)
   static String? fotmobToSportsDbId(String fotmobId) {
     const map = {
-      '263': '4340',  // Belarus Premier League
-      '169': '4341',  // Sweden Ettan
-      '9091': '4342', // Chile Cup
-      '9986': '4343', // Canadian Premier League
-      '287': '4344',  // UEFA Euro U19
+      '263': '4622',  // Belarus Premier League (Vyscha Liga)
+      '169': '4416',  // Sweden Allsvenskan
+      '130': '4659',  // Turkey Süper Lig
+      '108': '4344',  // Primeira Liga
+      '73':  '4341',  // EFL Championship
+      '67':  '4337',  // Eredivisie
     };
     return map[fotmobId];
   }
@@ -96,12 +97,14 @@ class EspnClient {
       );
       final data = res.data as Map<String, dynamic>;
       final table = data['table'] as List? ?? [];
+      int rank = 0;
       return table.map((e) {
         final m = e as Map<String, dynamic>;
+        rank++;
         return {
           'id': _s(m['idTeam']),
           'name': _s(m['strTeam']),
-          'logo': _s(m['strTeamBadge']),
+          'logo': _s(m['strTeamBadge']).replaceAll('/medium', '/tiny'),
           'played': int.tryParse(_s(m['intPlayed'])) ?? 0,
           'wins': int.tryParse(_s(m['intWin'])) ?? 0,
           'draws': int.tryParse(_s(m['intDraw'])) ?? 0,
@@ -110,6 +113,7 @@ class EspnClient {
           'goalsAgainst': int.tryParse(_s(m['intGoalsAgainst'])) ?? 0,
           'gd': int.tryParse(_s(m['intGoalDifference'])) ?? 0,
           'pts': int.tryParse(_s(m['intPoints'])) ?? 0,
+          'pos': int.tryParse(_s(m['intRank'])) ?? rank,
         };
       }).toList();
     } catch (_) {

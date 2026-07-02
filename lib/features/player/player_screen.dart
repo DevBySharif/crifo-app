@@ -33,16 +33,16 @@ class PlayerScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(_playerProvider(playerId));
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: context.cBg,
       body: data.when(
         data: (d) => _PlayerBody(data: d),
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
+        loading: () => Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
         error: (e, _) => Scaffold(
-          appBar: AppBar(backgroundColor: AppColors.bg, leading: const BackButton(color: AppColors.textPrimary)),
-          backgroundColor: AppColors.bg,
+          appBar: AppBar(backgroundColor: context.cBg, leading: BackButton(color: context.cTextPrimary)),
+          backgroundColor: context.cBg,
           body: Center(child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text('Could not load player: $e', style: const TextStyle(color: AppColors.textMuted), textAlign: TextAlign.center),
+            child: Text('Could not load player: $e', style: TextStyle(color: context.cTextMuted), textAlign: TextAlign.center),
           )),
         ),
       ),
@@ -118,10 +118,10 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
     return NestedScrollView(
       headerSliverBuilder: (ctx, _) => [
         SliverAppBar(
-          backgroundColor: AppColors.bg,
+          backgroundColor: context.cBg,
           pinned: true,
-          leading: const BackButton(color: AppColors.textPrimary),
-          expandedHeight: 320,
+          leading: BackButton(color: context.cTextPrimary),
+          expandedHeight: 348,
           flexibleSpace: FlexibleSpaceBar(
             background: Container(
               decoration: BoxDecoration(gradient: _gradient),
@@ -142,13 +142,14 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
                       child: CachedNetworkImage(
                         imageUrl: FotmobClient.playerImageUrl(data['id']), width: 110, height: 110, fit: BoxFit.cover,
                         errorWidget: (_, __, ___) => Container(
-                          color: AppColors.bgElevated,
-                          child: const Icon(Icons.person, size: 50, color: AppColors.textMuted)),
+                          color: context.cBgElevated,
+                          child: Icon(Icons.person, size: 50, color: context.cTextMuted)),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.3)),
+                  SizedBox(height: 12),
+                  // Hero sits on a dark gradient in both themes — keep text light
+                  Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFFF0F0FF), letterSpacing: -0.3)),
                   const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -169,9 +170,9 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12)),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.shield_outlined, size: 12, color: AppColors.textSecondary),
+                            const Icon(Icons.shield_outlined, size: 12, color: Color(0xFFB0B0C8)),
                             const SizedBox(width: 4),
-                            Text(club, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w500)),
+                            Text(club, style: const TextStyle(color: Color(0xFFB0B0C8), fontSize: 11, fontWeight: FontWeight.w500)),
                           ]),
                         ),
                       ),
@@ -181,9 +182,9 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12)),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.public, size: 12, color: AppColors.textSecondary),
+                          const Icon(Icons.public, size: 12, color: Color(0xFFB0B0C8)),
                           const SizedBox(width: 4),
-                          Text(country, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w500)),
+                          Text(country, style: const TextStyle(color: Color(0xFFB0B0C8), fontSize: 11, fontWeight: FontWeight.w500)),
                         ]),
                       ),
                   ]),
@@ -195,7 +196,7 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
             preferredSize: const Size.fromHeight(48),
             child: Container(
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.border)),
+                border: Border(top: BorderSide(color: context.cBorder)),
               ),
               child: TabBar(
                 controller: _tabs,
@@ -204,7 +205,7 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
                 indicatorColor: AppColors.accentBlue,
                 indicatorWeight: 3,
                 labelColor: AppColors.accentBlue,
-                unselectedLabelColor: AppColors.textMuted,
+                unselectedLabelColor: context.cTextMuted,
                 labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                 tabs: const [
                   Tab(text: 'STATS'), Tab(text: 'MATCHES'), Tab(text: 'CAREER'), Tab(text: 'TROPHIES'),
@@ -239,9 +240,9 @@ class _GlassCard extends StatelessWidget {
     padding: padding ?? const EdgeInsets.all(12),
     height: height,
     decoration: BoxDecoration(
-      color: Colors.white.withOpacity(0.04),
+      color: context.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Colors.white.withOpacity(0.06)),
+      border: Border.all(color: context.isDark ? Colors.white.withOpacity(0.06) : AppColors.borderLightMode),
     ),
     child: child,
   );
@@ -260,8 +261,8 @@ class _SectionTitle extends StatelessWidget {
         gradient: LinearGradient(colors: [AppColors.accentBlue, AppColors.accentPurple]),
         borderRadius: BorderRadius.circular(2),
       )),
-      const SizedBox(width: 10),
-      Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary, letterSpacing: 0.3)),
+      SizedBox(width: 10),
+      Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: context.cTextPrimary, letterSpacing: 0.3)),
     ]),
   );
 }
@@ -274,7 +275,7 @@ class _StatsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (stats.isEmpty) {
-      return const Center(child: Text('No stats available', style: TextStyle(color: AppColors.textMuted)));
+      return Center(child: Text('No stats available', style: TextStyle(color: context.cTextMuted)));
     }
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -293,10 +294,10 @@ class _StatsSection extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 child: Row(children: [
                   Expanded(
-                    child: Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    child: Text(title, style: TextStyle(color: context.cTextSecondary, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
-                  const SizedBox(width: 8),
-                  Text(value, style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Oswald')),
+                  SizedBox(width: 8),
+                  Text(value, style: TextStyle(color: context.cTextPrimary, fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Oswald')),
                 ]),
               ),
             );
@@ -315,7 +316,7 @@ class _MatchesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (matches.isEmpty) {
-      return const Center(child: Text('No recent matches', style: TextStyle(color: AppColors.textMuted)));
+      return Center(child: Text('No recent matches', style: TextStyle(color: context.cTextMuted)));
     }
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -365,16 +366,16 @@ class _MatchesSection extends StatelessWidget {
                       colors: [resultColor, resultColor.withOpacity(0.7)])),
                     child: Center(child: Text(result, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800))),
                   ),
-                if (resultColor != null) const SizedBox(width: 10),
+                if (resultColor != null) SizedBox(width: 10),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       Flexible(child: Text('$home $hScore-$aScore $away',
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                        style: TextStyle(color: context.cTextPrimary, fontSize: 13, fontWeight: FontWeight.w600),
                         overflow: TextOverflow.ellipsis)),
                     ]),
                     if (leagueName.isNotEmpty)
-                      Text(leagueName, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                      Text(leagueName, style: TextStyle(color: context.cTextMuted, fontSize: 10)),
                   ]),
                 ),
                 Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -390,7 +391,7 @@ class _MatchesSection extends StatelessWidget {
                   if (minutes.isNotEmpty && minutes != '0')
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Text("${minutes}'", style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                      child: Text("${minutes}'", style: TextStyle(color: context.cTextMuted, fontSize: 11)),
                     ),
                 ]),
                 const SizedBox(width: 8),
@@ -421,11 +422,11 @@ class _MatchesSection extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                       decoration: BoxDecoration(
-                        color: rating >= 7 ? AppColors.accentGreen.withOpacity(0.12) : AppColors.bgElevated,
+                        color: rating >= 7 ? AppColors.accentGreen.withOpacity(0.12) : context.cBgElevated,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(rating.toStringAsFixed(1), style: TextStyle(
-                        color: rating >= 7 ? AppColors.accentGreen : AppColors.textMuted,
+                        color: rating >= 7 ? AppColors.accentGreen : context.cTextMuted,
                         fontSize: 10, fontWeight: FontWeight.w700)),
                     ),
                   ],
@@ -447,7 +448,7 @@ class _CareerSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (career.isEmpty) {
-      return const Center(child: Text('No career data', style: TextStyle(color: AppColors.textMuted)));
+      return Center(child: Text('No career data', style: TextStyle(color: context.cTextMuted)));
     }
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -473,41 +474,37 @@ class _CareerSection extends StatelessWidget {
                 Container(
                   width: 40, height: 40,
                   decoration: BoxDecoration(
-                    color: AppColors.bgElevated,
+                    color: context.cBgElevated,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: CachedNetworkImage(
                       imageUrl: FotmobClient.teamLogoUrl(teamId), width: 40, height: 40, fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => const Icon(Icons.shield_outlined, color: AppColors.textMuted, size: 22)),
+                      errorWidget: (_, __, ___) => Icon(Icons.shield_outlined, color: context.cTextMuted, size: 22)),
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(team, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 4),
-                  Row(children: [
-                    Icon(Icons.calendar_today, size: 9, color: AppColors.textMuted),
-                    const SizedBox(width: 4),
-                    Text(from, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
-                    if (to.isNotEmpty) Text(' – $to', style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
-                    if (transferType.isNotEmpty) ...[
-                      const SizedBox(width: 8),
+                  Text(team, style: TextStyle(color: context.cTextPrimary, fontSize: 14, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  SizedBox(height: 4),
+                  Wrap(spacing: 4, runSpacing: 3, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                    Icon(Icons.calendar_today, size: 9, color: context.cTextMuted),
+                    Text('$from${to.isNotEmpty ? ' – $to' : ''}', style: TextStyle(color: context.cTextMuted, fontSize: 10)),
+                    if (transferType.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(color: AppColors.accentPurple.withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
                         child: Text(transferType, style: const TextStyle(color: AppColors.accentPurple, fontSize: 8, fontWeight: FontWeight.w600)),
                       ),
-                    ],
                   ]),
                 ])),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 SizedBox(
                   width: 90,
                   child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                     if (apps.isNotEmpty && apps != '0')
-                      Text('$apps apps', style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                      Text('$apps apps', style: TextStyle(color: context.cTextMuted, fontSize: 11)),
                     const SizedBox(height: 3),
                     Wrap(alignment: WrapAlignment.end, spacing: 4, runSpacing: 2, children: [
                       if (goals.isNotEmpty && goals != '0')
@@ -542,7 +539,7 @@ class _TrophiesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (trophies.isEmpty) {
-      return const Center(child: Text('No trophies', style: TextStyle(color: AppColors.textMuted)));
+      return Center(child: Text('No trophies', style: TextStyle(color: context.cTextMuted)));
     }
     final rows = trophies.expand((t) {
       final pt = _m(t);
@@ -581,11 +578,11 @@ class _TrophyCard extends StatelessWidget {
           ),
           child: const Icon(Icons.emoji_events, color: AppColors.accentGold, size: 22),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(leagueName, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+          Text(leagueName, style: TextStyle(color: context.cTextPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
           if (teamName.isNotEmpty)
-            Text(teamName, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+            Text(teamName, style: TextStyle(color: context.cTextMuted, fontSize: 11)),
         ])),
         if (seasons.isNotEmpty)
           Flexible(

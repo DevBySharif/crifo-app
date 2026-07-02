@@ -29,6 +29,7 @@ class AppTheme {
       ),
     ),
     dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 0.5, space: 0),
+    splashFactory: InkSparkle.splashFactory,
     pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
         TargetPlatform.android: CupertinoPageTransitionsBuilder(),
@@ -76,6 +77,7 @@ class AppTheme {
       ),
     ),
     dividerTheme: const DividerThemeData(color: AppColors.borderLightMode, thickness: 0.5, space: 0),
+    splashFactory: InkSparkle.splashFactory,
     pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
         TargetPlatform.android: CupertinoPageTransitionsBuilder(),

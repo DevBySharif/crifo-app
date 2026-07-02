@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/api/fotmob_client.dart';
+import '../../core/api/tv_channels.dart';
+import '../../core/providers/tv_fullscreen_provider.dart';
 import '../../core/theme/colors.dart';
 import '../player/player_screen.dart';
 import '../team/team_screen.dart';
@@ -71,9 +73,9 @@ class _GlassCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: padding ?? const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: Colors.white.withOpacity(0.04),
+      color: context.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Colors.white.withOpacity(0.06)),
+      border: Border.all(color: context.isDark ? Colors.white.withOpacity(0.06) : AppColors.borderLightMode),
     ),
     child: child,
   );
@@ -91,8 +93,8 @@ class _SecTitle extends StatelessWidget {
         gradient: const LinearGradient(colors: [AppColors.accentBlue, AppColors.accentPurple]),
         borderRadius: BorderRadius.circular(2),
       )),
-      const SizedBox(width: 10),
-      Text(title, style: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary, letterSpacing: 0.5)),
+      SizedBox(width: 10),
+      Text(title, style: TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w700, color: context.cTextPrimary, letterSpacing: 0.5)),
     ]),
   );
 }
@@ -127,14 +129,14 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
   Widget build(BuildContext context) {
     final data = ref.watch(_matchDetailProvider(widget.matchId));
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: context.cBg,
       body: data.when(
         data: (d) => _buildBody(d),
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
+        loading: () => Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
         error: (e, _) => Scaffold(
-          appBar: AppBar(backgroundColor: AppColors.bg, leading: const BackButton(color: AppColors.textPrimary)),
-          backgroundColor: AppColors.bg,
-          body: Center(child: Text('Could not load match: $e', style: const TextStyle(color: AppColors.textMuted))),
+          appBar: AppBar(backgroundColor: context.cBg, leading: BackButton(color: context.cTextPrimary)),
+          backgroundColor: context.cBg,
+          body: Center(child: Text('Could not load match: $e', style: TextStyle(color: context.cTextMuted))),
         ),
       ),
     );
@@ -175,7 +177,7 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Text(league,
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.5),
+                            style: const TextStyle(color: Color(0xFF8A8AA8), fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.5),
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                         ),
                       _MatchHeader(home: home, away: away, status: status),
@@ -186,7 +188,7 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
               Positioned(
                 left: 0, top: topPad,
                 child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
                   onPressed: () => Navigator.pop(context),
                 ),
               ),
@@ -195,7 +197,7 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
         ),
         Container(
           decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: AppColors.border)),
+            border: Border(top: BorderSide(color: context.cBorder)),
           ),
           child: TabBar(
             controller: _tabs,
@@ -204,7 +206,7 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
             indicatorColor: AppColors.accentBlue,
             indicatorWeight: 3,
             labelColor: AppColors.accentBlue,
-            unselectedLabelColor: AppColors.textMuted,
+            unselectedLabelColor: context.cTextMuted,
             labelStyle: const TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w700),
             tabs: _tabLabels.map((l) => Tab(text: l)).toList(),
           ),
@@ -271,13 +273,13 @@ class _MatchHeader extends StatelessWidget {
               ),
               const SizedBox(height: 4),
             ] else if (timeLabel.isNotEmpty) ...[
-              Text(timeLabel, style: TextStyle(
-                color: finished ? AppColors.textMuted : AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w600)),
+              Text(timeLabel, style: const TextStyle(
+                color: Color(0xFF8A8AA8), fontSize: 11, fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
             ],
             FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(score, style: TextStyle(fontFamily: 'Oswald', fontSize: 38, fontWeight: FontWeight.w800, color: AppColors.textPrimary,
+              child: Text(score, style: TextStyle(fontFamily: 'Oswald', fontSize: 38, fontWeight: FontWeight.w800, color: const Color(0xFFF0F0FF),
                 shadows: [Shadow(blurRadius: 10, color: Colors.black.withOpacity(0.3))])),
             ),
           ]),
@@ -319,15 +321,15 @@ class _TeamBlock extends StatelessWidget {
               child: id != null
                 ? CachedNetworkImage(imageUrl: FotmobClient.teamLogoUrl(id), width: 52, height: 52, fit: BoxFit.cover,
                     errorWidget: (_, __, ___) => Container(
-                      color: AppColors.bgElevated,
-                      child: const Icon(Icons.sports_soccer, size: 24, color: AppColors.textMuted)))
+                      color: context.cBgElevated,
+                      child: Icon(Icons.sports_soccer, size: 24, color: context.cTextMuted)))
                 : Container(
-                  color: AppColors.bgElevated,
-                  child: const Icon(Icons.sports_soccer, size: 24, color: AppColors.textMuted)),
+                  color: context.cBgElevated,
+                  child: Icon(Icons.sports_soccer, size: 24, color: context.cTextMuted)),
             ),
           ),
-          const SizedBox(height: 6),
-          Text(name, style: const TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+          SizedBox(height: 6),
+          Text(name, style: const TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFF0F0FF)),
             textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
         ]),
     );
@@ -352,8 +354,8 @@ class _InfoLine extends StatelessWidget {
         ),
         child: Icon(icon, size: 14, color: AppColors.accentBlue),
       ),
-      const SizedBox(width: 10),
-      Expanded(child: Text(text, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13))),
+      SizedBox(width: 10),
+      Expanded(child: Text(text, style: TextStyle(color: context.cTextSecondary, fontSize: 13))),
       if (trailing != null) trailing!,
     ]),
   );
@@ -376,7 +378,7 @@ class _PreviewTab extends StatelessWidget {
 
     final infoBox  = _m(matchFacts['infoBox']);
     final stadium  = _m(infoBox['Stadium']);
-    final venue    = _s(stadium['name']).isNotEmpty ? _s(stadium['name']) : _s(_m(_m(_m(matchFacts['matchInfo'])['venue'])['shortName']));
+    final venue    = _s(stadium['name']).isNotEmpty ? _s(stadium['name']) : _s(_m(_m(matchFacts['matchInfo'])['venue'])['shortName']);
     final city     = _s(stadium['city']);
     final referee  = _s(_m(infoBox['Referee'])['name']);
     final capacity = _s(stadium['capacity']);
@@ -422,7 +424,7 @@ class _PreviewTab extends StatelessWidget {
             child: Column(children: [
               if (dateStr.isNotEmpty)     _InfoLine(icon: Icons.calendar_today, text: dateStr),
               if (venue.isNotEmpty)       _InfoLine(icon: Icons.location_on, text: [venue, city].where((s) => s.isNotEmpty).join(', ')),
-              if (round.isNotEmpty)       _InfoLine(icon: Icons.emoji_events, text: round),
+              if (round.isNotEmpty)       _InfoLine(icon: Icons.emoji_events, text: int.tryParse(round) != null ? 'Round $round' : round),
               if (referee.isNotEmpty)     _InfoLine(icon: Icons.person, text: 'Referee: $referee'),
               if (capacity.isNotEmpty)    _InfoLine(icon: Icons.people, text: 'Capacity: ${int.tryParse(capacity) != null ? _fmtNum(int.parse(capacity)) : capacity}'),
               if (surface.isNotEmpty)     _InfoLine(icon: Icons.layers, text: 'Surface: $surface'),
@@ -443,7 +445,7 @@ class _PreviewTab extends StatelessWidget {
           _GlassCard(
             child: Column(children: [
               _FormRow(label: _s(home['name']), form: homeForm),
-              const Divider(height: 16, color: AppColors.border),
+              Divider(height: 16, color: context.cBorder),
               _FormRow(label: _s(away['name']), form: awayForm),
             ]),
           ),
@@ -459,9 +461,9 @@ class _PreviewTab extends StatelessWidget {
         ],
 
         if (dateStr.isEmpty && tvChannels.isEmpty && homeForm.isEmpty && insights.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(top: 48),
-            child: Center(child: Text('Preview not available yet', style: TextStyle(color: AppColors.textMuted))),
+            child: Center(child: Text('Preview not available yet', style: TextStyle(color: context.cTextMuted))),
           ),
       ],
     );
@@ -480,28 +482,73 @@ class _PreviewTab extends StatelessWidget {
   String _month(int m) => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
 }
 
-class _TvChip extends StatelessWidget {
+// Normalize a channel name for fuzzy matching against our TV list
+String _normChannel(String s) => s
+    .toLowerCase()
+    .replaceAll(RegExp(r'\b(hd|fhd|uhd|4k|sd|tv)\b'), '')
+    .replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+/// Finds a playable channel in our TV list matching a FotMob channel name.
+TVChannel? findPlayableChannel(String fotmobName) {
+  final target = _normChannel(fotmobName);
+  if (target.length < 3) return null;
+  TVChannel? best;
+  var bestLen = 0;
+  for (final c in tvChannels) {
+    final n = _normChannel(c.name);
+    if (n.length < 3) continue;
+    if (n == target) return c;
+    if ((n.contains(target) || target.contains(n)) && n.length > bestLen) {
+      best = c;
+      bestLen = n.length;
+    }
+  }
+  return best;
+}
+
+class _TvChip extends ConsumerWidget {
   final Map<String, dynamic> ch;
   const _TvChip({required this.ch});
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final name = _s(ch['name']).isNotEmpty ? _s(ch['name']) : _s(ch['channelName']);
     final logo = _s(ch['logoUrl']).isNotEmpty ? _s(ch['logoUrl']) : _s(ch['logoSmallUrl']);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+    final playable = findPlayableChannel(name);
+    return GestureDetector(
+      onTap: playable == null ? null : () {
+        ref.read(tvPlayRequestProvider.notifier).state = playable.id;
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: playable != null
+              ? AppColors.accentPrimary.withOpacity(0.12)
+              : Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: playable != null
+              ? AppColors.accentPrimary.withOpacity(0.45)
+              : (context.isDark ? Colors.white.withOpacity(0.06) : AppColors.borderLightMode)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (playable != null) ...[
+            const Icon(Icons.play_circle_fill_rounded, size: 16, color: AppColors.accentPrimary),
+            const SizedBox(width: 5),
+          ] else if (logo.isNotEmpty) ...[
+            CachedNetworkImage(imageUrl: logo, width: 20, height: 20,
+              errorWidget: (_, __, ___) => const SizedBox()),
+            const SizedBox(width: 6),
+          ],
+          Text(name, style: TextStyle(
+            color: playable != null ? AppColors.accentPrimary : context.cTextPrimary,
+            fontSize: 12, fontWeight: FontWeight.w600)),
+          if (playable != null) ...[
+            const SizedBox(width: 4),
+            const Text('WATCH', style: TextStyle(
+              color: AppColors.accentPrimary, fontSize: 8.5,
+              fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+          ],
+        ]),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (logo.isNotEmpty) ...[
-          CachedNetworkImage(imageUrl: logo, width: 20, height: 20,
-            errorWidget: (_, __, ___) => const SizedBox()),
-          const SizedBox(width: 6),
-        ],
-        Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
-      ]),
     );
   }
 }
@@ -509,17 +556,17 @@ class _TvChip extends StatelessWidget {
 class _FormRow extends StatelessWidget {
   final String label;
   final List form;
-  const _FormRow({required this.label, required this.form});
+  _FormRow({required this.label, required this.form});
   static const _colors = {'W': AppColors.accentGreen, 'D': AppColors.accentOrange, 'L': AppColors.accentRed};
   @override
   Widget build(BuildContext context) {
-    if (form.isEmpty) return const SizedBox();
+    if (form.isEmpty) return SizedBox();
     return Row(children: [
-      SizedBox(width: 100, child: Text(label, style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+      SizedBox(width: 100, child: Text(label, style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
       const Spacer(),
       ...form.reversed.take(6).toList().reversed.map((f) {
         final r = _s(_m(f)['result']).isNotEmpty ? _s(_m(f)['result']) : _s(_m(f)['resultString']);
-        final c = _colors[r] ?? AppColors.textMuted;
+        final c = _colors[r] ?? context.cTextMuted;
         return Container(
           width: 28, height: 28,
           margin: const EdgeInsets.only(left: 6),
@@ -549,8 +596,8 @@ class _InsightRow extends StatelessWidget {
           gradient: const LinearGradient(colors: [AppColors.accentBlue, AppColors.accentPurple]),
         ),
       ),
-      const SizedBox(width: 10),
-      Expanded(child: Text(text, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4))),
+      SizedBox(width: 10),
+      Expanded(child: Text(text, style: TextStyle(color: context.cTextSecondary, fontSize: 13, height: 1.4))),
     ]),
   );
 }
@@ -575,7 +622,7 @@ class _EventsTab extends StatelessWidget {
     }).toList();
 
     if (events.isEmpty) {
-      return const Center(child: Text('No events yet', style: TextStyle(color: AppColors.textMuted)));
+      return Center(child: Text('No events yet', style: TextStyle(color: context.cTextMuted)));
     }
 
     return ListView(
@@ -663,10 +710,10 @@ class _EventRow extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 36),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.bgElevated,
+        color: context.cBgElevated,
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(timeStr, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontFamily: 'Oswald', fontWeight: FontWeight.w600), textAlign: TextAlign.center),
+      child: Text(timeStr, style: TextStyle(color: context.cTextSecondary, fontSize: 12, fontFamily: 'Oswald', fontWeight: FontWeight.w600), textAlign: TextAlign.center),
     );
 
     return Padding(
@@ -700,15 +747,15 @@ class _EventRow extends StatelessWidget {
               if (player.isNotEmpty)
                 GestureDetector(
                   onTap: () { if (playerId.isNotEmpty) Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(playerId: playerId, playerName: player))); },
-                  child: Text(player, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  child: Text(player, style: TextStyle(color: context.cTextPrimary, fontSize: 13, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
               if (assist.isNotEmpty)
                 GestureDetector(
                   onTap: () { if (assistId.isNotEmpty) Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(playerId: assistId, playerName: assist))); },
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.remove_red_eye, size: 10, color: AppColors.textMuted),
-                    const SizedBox(width: 2),
-                      Text(assist, style: const TextStyle(color: AppColors.textMuted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Icon(Icons.remove_red_eye, size: 10, color: context.cTextMuted),
+                    SizedBox(width: 2),
+                      Text(assist, style: TextStyle(color: context.cTextMuted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
                   ]),
                 ),
             ],
@@ -756,23 +803,23 @@ class _StatsTab extends StatelessWidget {
     if (groups.isEmpty && content['stats'] is List) groups = content['stats'] as List;
 
     if (groups.isEmpty) {
-      return const Center(child: Text('Stats not available for this match', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
+      return Center(child: Text('Stats not available for this match', style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter')));
     }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
         Row(children: [
-          Expanded(child: Text(homeName, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w700))),
+          Expanded(child: Text(homeName, style: TextStyle(color: context.cTextPrimary, fontSize: 13, fontWeight: FontWeight.w700))),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.06),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Text('STATS', style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+            child: Text('STATS', style: TextStyle(color: context.cTextMuted, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
           ),
-          Expanded(child: Text(awayName, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w700), textAlign: TextAlign.right)),
+          Expanded(child: Text(awayName, style: TextStyle(color: context.cTextPrimary, fontSize: 13, fontWeight: FontWeight.w700), textAlign: TextAlign.right)),
         ]),
         const SizedBox(height: 8),
         for (int gi = 0; gi < groups.length; gi++) ...[
@@ -783,11 +830,11 @@ class _StatsTab extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.04),
+                    color: context.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(_s(_m(groups[gi])['title']).toUpperCase(),
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                    style: TextStyle(color: context.cTextMuted, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
                 ),
               ),
               const SizedBox(height: 8),
@@ -828,13 +875,15 @@ class _StatRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(children: [
         Row(children: [
-          SizedBox(width: 40, child: Text(home, style: TextStyle(fontFamily: 'Oswald', fontSize: 16,
-            color: hFrac > 0.5 ? AppColors.accentBlue : AppColors.textPrimary, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+          SizedBox(width: 76, child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+            child: Text(home, maxLines: 1, style: TextStyle(fontFamily: 'Oswald', fontSize: 16,
+              color: hFrac > 0.5 ? AppColors.accentBlue : context.cTextPrimary, fontWeight: FontWeight.w700)))),
+          SizedBox(width: 8),
+          Expanded(child: Text(title, style: TextStyle(fontSize: 12, color: context.cTextMuted), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis)),
           const SizedBox(width: 8),
-          Expanded(child: Text(title, style: const TextStyle(fontSize: 12, color: AppColors.textMuted), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis)),
-          const SizedBox(width: 8),
-          SizedBox(width: 40, child: Text(away, style: TextStyle(fontFamily: 'Oswald', fontSize: 16,
-            color: hFrac < 0.5 ? AppColors.accentBlue : AppColors.textPrimary, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+          SizedBox(width: 76, child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight,
+            child: Text(away, maxLines: 1, style: TextStyle(fontFamily: 'Oswald', fontSize: 16,
+              color: hFrac < 0.5 ? AppColors.accentBlue : context.cTextPrimary, fontWeight: FontWeight.w700)))),
         ]),
         const SizedBox(height: 6),
         ClipRRect(
@@ -889,7 +938,7 @@ class _LineupTabState extends State<_LineupTab> {
     }
 
     if (lineup['homeTeam'] == null && lineup['awayTeam'] == null) {
-      return const Center(child: Text('Lineup not available for this match', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
+      return Center(child: Text('Lineup not available for this match', style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter')));
     }
 
     final homeTeam = _m(lineup['homeTeam']);
@@ -908,7 +957,7 @@ class _LineupTabState extends State<_LineupTab> {
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.04),
+            color: context.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
             borderRadius: BorderRadius.circular(24),
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
@@ -925,7 +974,7 @@ class _LineupTabState extends State<_LineupTab> {
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Column(children: [
               Text(_s(homeTeam['formation']), style: const TextStyle(fontFamily: 'Oswald', fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.accentBlue)),
-              Text(_s(homeTeam['name']), style: const TextStyle(color: AppColors.textMuted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(_s(homeTeam['name']), style: TextStyle(color: context.cTextMuted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
             ]),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -933,11 +982,11 @@ class _LineupTabState extends State<_LineupTab> {
                 color: Colors.white.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text('vs', style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
+              child: Text('vs', style: TextStyle(color: context.cTextMuted, fontSize: 11, fontWeight: FontWeight.w600)),
             ),
             Column(children: [
               Text(_s(awayTeam['formation']), style: const TextStyle(fontFamily: 'Oswald', fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.accentRed)),
-              Text(_s(awayTeam['name']), style: const TextStyle(color: AppColors.textMuted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(_s(awayTeam['name']), style: TextStyle(color: context.cTextMuted, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
             ]),
           ]),
         ),
@@ -1008,9 +1057,9 @@ class _ToggleBtn extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 14, color: active ? Colors.white : AppColors.textMuted),
+        Icon(icon, size: 14, color: active ? Colors.white : context.cTextMuted),
         const SizedBox(width: 5),
-        Text(label, style: TextStyle(color: active ? Colors.white : AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+        Text(label, style: TextStyle(color: active ? Colors.white : context.cTextMuted, fontSize: 12, fontWeight: FontWeight.w600)),
       ]),
     ),
   );
@@ -1034,7 +1083,7 @@ class _LineupListView extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(children: [
                 Expanded(child: h != null ? _ListPlayer(player: h) : const SizedBox()),
-                Container(width: 1, height: 36, color: AppColors.border, margin: const EdgeInsets.symmetric(horizontal: 8)),
+                Container(width: 1, height: 36, color: context.cBorder, margin: const EdgeInsets.symmetric(horizontal: 8)),
                 Expanded(child: a != null ? _ListPlayer(player: a, isAway: true) : const SizedBox()),
               ]),
             );
@@ -1067,17 +1116,17 @@ class _ListPlayer extends StatelessWidget {
             width: 26, height: 26,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.bgElevated,
+              color: context.cBgElevated,
               border: Border.all(color: Colors.white.withOpacity(0.08)),
             ),
-            child: Center(child: Text(shirt, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.w700))),
+            child: Center(child: Text(shirt, style: TextStyle(color: context.cTextSecondary, fontSize: 10, fontWeight: FontWeight.w700))),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           Expanded(child: Column(crossAxisAlignment: isAway ? CrossAxisAlignment.end : CrossAxisAlignment.start, children: [
-            Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(name, style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
             SizedBox(height: 2),
             Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: isAway ? MainAxisAlignment.end : MainAxisAlignment.start, children: [
-              Text(pos, style: const TextStyle(color: AppColors.textMuted, fontSize: 9)),
+              Text(pos, style: TextStyle(color: context.cTextMuted, fontSize: 9)),
               if (r != null) ...[
                 const SizedBox(width: 6),
                 Container(
@@ -1288,11 +1337,11 @@ class _BenchPlayer extends StatelessWidget {
             ),
             child: ClipOval(child: id != null
               ? CachedNetworkImage(imageUrl: FotmobClient.playerImageUrl(id), fit: BoxFit.cover,
-                  errorWidget: (_, __, ___) => Center(child: Text(shirt, style: const TextStyle(fontSize: 10, color: AppColors.textPrimary, fontFamily: 'Oswald'))))
-              : Center(child: Text(shirt, style: const TextStyle(fontSize: 10, color: AppColors.textPrimary, fontFamily: 'Oswald')))),
+                  errorWidget: (_, __, ___) => Center(child: Text(shirt, style: TextStyle(fontSize: 10, color: context.cTextPrimary, fontFamily: 'Oswald'))))
+              : Center(child: Text(shirt, style: TextStyle(fontSize: 10, color: context.cTextPrimary, fontFamily: 'Oswald')))),
           ),
-          const SizedBox(width: 8),
-          Expanded(child: Text(name, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12), overflow: TextOverflow.ellipsis)),
+          SizedBox(width: 8),
+          Expanded(child: Text(name, style: TextStyle(color: context.cTextSecondary, fontSize: 12), overflow: TextOverflow.ellipsis)),
         ],
       ),
     );
@@ -1322,13 +1371,13 @@ class _CoachRow extends StatelessWidget {
               ),
               child: ClipOval(child: id != null
                 ? CachedNetworkImage(imageUrl: FotmobClient.playerImageUrl(id), fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => const Icon(Icons.person, size: 18, color: AppColors.textMuted))
-                : const Icon(Icons.person, size: 18, color: AppColors.textMuted)),
+                    errorWidget: (_, __, ___) => Icon(Icons.person, size: 18, color: context.cTextMuted))
+                : Icon(Icons.person, size: 18, color: context.cTextMuted)),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: isAway ? CrossAxisAlignment.end : CrossAxisAlignment.start, children: [
-              Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
-              const Text('Coach', style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
+              Text(name, style: TextStyle(color: context.cTextPrimary, fontSize: 13, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+              Text('Coach', style: TextStyle(color: context.cTextMuted, fontSize: 10)),
             ])),
           ],
         ),
@@ -1345,7 +1394,7 @@ class _H2HTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final h2h = _m(_m(data['content'])['h2h']);
-    if (h2h.isEmpty) return const Center(child: Text('H2H not available', style: TextStyle(color: AppColors.textMuted)));
+    if (h2h.isEmpty) return Center(child: Text('H2H not available', style: TextStyle(color: context.cTextMuted)));
 
     final teams    = _l(header['teams']);
     final homeName = teams.isNotEmpty ? _s(_m(teams[0])['name']) : '';
@@ -1361,21 +1410,21 @@ class _H2HTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
-        const _SecTitle('HEAD TO HEAD'),
+        _SecTitle('HEAD TO HEAD'),
         _GlassCard(
           child: Column(children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
               Column(children: [
                 Text('$hw', style: const TextStyle(fontFamily: 'Oswald', fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.accentBlue)),
-                Text(homeName.split(' ').last, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                Text(homeName.split(' ').last, style: TextStyle(color: context.cTextMuted, fontSize: 11)),
               ]),
               Column(children: [
-                Text('$draws', style: const TextStyle(fontFamily: 'Oswald', fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.textMuted)),
-                const Text('Draw', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                Text('$draws', style: TextStyle(fontFamily: 'Oswald', fontSize: 32, fontWeight: FontWeight.w800, color: context.cTextMuted)),
+                Text('Draw', style: TextStyle(color: context.cTextMuted, fontSize: 11)),
               ]),
               Column(children: [
                 Text('$aw', style: const TextStyle(fontFamily: 'Oswald', fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.accentRed)),
-                Text(awayName.split(' ').last, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                Text(awayName.split(' ').last, style: TextStyle(color: context.cTextMuted, fontSize: 11)),
               ]),
             ]),
             const SizedBox(height: 14),
@@ -1389,7 +1438,7 @@ class _H2HTab extends StatelessWidget {
                   ),
                 )),
                 const SizedBox(width: 2),
-                Flexible(flex: draws > 0 ? draws : 1, child: Container(height: 8, color: AppColors.textMuted)),
+                Flexible(flex: draws > 0 ? draws : 1, child: Container(height: 8, color: context.cTextMuted)),
                 const SizedBox(width: 2),
                 Flexible(flex: aw > 0 ? aw : 1, child: Container(
                   height: 8,
@@ -1441,18 +1490,18 @@ class _H2HMatchRow extends StatelessWidget {
         child: _GlassCard(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(children: [
-            SizedBox(width: 44, child: Text(dateStr, style: const TextStyle(color: AppColors.textMuted, fontSize: 10))),
-            Expanded(child: Text(_s(home['name']), style: const TextStyle(color: AppColors.textPrimary, fontSize: 12), textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
+            SizedBox(width: 52, child: Text(dateStr, maxLines: 1, overflow: TextOverflow.clip, style: TextStyle(color: context.cTextMuted, fontSize: 10))),
+            Expanded(child: Text(_s(home['name']), style: TextStyle(color: context.cTextPrimary, fontSize: 12), textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 10),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: AppColors.bgElevated,
+                color: context.cBgElevated,
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Text(score.isNotEmpty ? score : '-', style: const TextStyle(fontFamily: 'Oswald', fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              child: Text(score.isNotEmpty ? score : '-', style: TextStyle(fontFamily: 'Oswald', fontSize: 15, fontWeight: FontWeight.w700, color: context.cTextPrimary)),
             ),
-            Expanded(child: Text(_s(away['name']), style: const TextStyle(color: AppColors.textPrimary, fontSize: 12), overflow: TextOverflow.ellipsis)),
+            Expanded(child: Text(_s(away['name']), style: TextStyle(color: context.cTextPrimary, fontSize: 12), overflow: TextOverflow.ellipsis)),
           ]),
         ),
       ),
@@ -1478,7 +1527,7 @@ class _PlayersTab extends StatelessWidget {
     // Also try matchFacts playerRatings as fallback
     final psRawFinal = psRaw ?? content['matchFacts']?['playerRatings'] ?? content['playerRatings'];
     if (psRawFinal == null) {
-      return const Center(child: Text('Player ratings not available for this match', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
+      return Center(child: Text('Player ratings not available for this match', style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter')));
     }
 
     final psMap = psRawFinal is Map ? psRawFinal : <String, dynamic>{};
@@ -1504,7 +1553,7 @@ class _PlayersTab extends StatelessWidget {
       ..sort((a, b) => (b['rating'] as double? ?? 0).compareTo(a['rating'] as double? ?? 0));
 
     if (players.isEmpty) {
-      return const Center(child: Text('Player stats not available', style: TextStyle(color: AppColors.textMuted)));
+      return Center(child: Text('Player stats not available', style: TextStyle(color: context.cTextMuted)));
     }
 
     final homePlayers = players.where((p) => p['teamId'] == homeId).toList();
@@ -1542,15 +1591,15 @@ class _PlayerStatsHeader extends StatelessWidget {
     decoration: BoxDecoration(
       border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.06))),
     ),
-    child: const Row(children: [
+    child: Row(children: [
       Expanded(flex: 3, child: Row(children: [
         SizedBox(width: 36),
-        Text('Player', style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700)),
+        Text('Player', style: TextStyle(color: context.cTextMuted, fontSize: 10, fontWeight: FontWeight.w700)),
       ])),
-      SizedBox(width: 36, child: Text('Rat', style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
-      SizedBox(width: 36, child: Text('Min', style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
-      SizedBox(width: 28, child: Text('G', style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
-      SizedBox(width: 28, child: Text('A', style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+      SizedBox(width: 36, child: Text('Rat', style: TextStyle(color: context.cTextMuted, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+      SizedBox(width: 36, child: Text('Min', style: TextStyle(color: context.cTextMuted, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+      SizedBox(width: 28, child: Text('G', style: TextStyle(color: context.cTextMuted, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
+      SizedBox(width: 28, child: Text('A', style: TextStyle(color: context.cTextMuted, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
     ]),
   );
 }
@@ -1580,21 +1629,21 @@ class _PlayerStatRow extends StatelessWidget {
               child: id != null
                 ? CachedNetworkImage(imageUrl: FotmobClient.playerImageUrl(id), width: 28, height: 28, fit: BoxFit.cover,
                     errorWidget: (_, __, ___) => Container(
-                      color: AppColors.bgElevated,
-                      child: const Icon(Icons.person, size: 16, color: AppColors.textMuted)))
+                      color: context.cBgElevated,
+                      child: Icon(Icons.person, size: 16, color: context.cTextMuted)))
                 : Container(
-                  color: AppColors.bgElevated,
-                  child: const Icon(Icons.person, size: 16, color: AppColors.textMuted)),
+                  color: context.cBgElevated,
+                  child: Icon(Icons.person, size: 16, color: context.cTextMuted)),
             ),
-            const SizedBox(width: 8),
-            Expanded(child: Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 12), overflow: TextOverflow.ellipsis)),
+            SizedBox(width: 8),
+            Expanded(child: Text(name, style: TextStyle(color: context.cTextPrimary, fontSize: 12), overflow: TextOverflow.ellipsis)),
           ])),
           SizedBox(width: 36, child: Text(r != null ? r.toStringAsFixed(1) : '-',
-            style: TextStyle(color: r != null ? _ratingColor(r) : AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700),
+            style: TextStyle(color: r != null ? _ratingColor(r) : context.cTextMuted, fontSize: 12, fontWeight: FontWeight.w700),
             textAlign: TextAlign.center)),
-          SizedBox(width: 36, child: Text(min.isNotEmpty ? min : '-', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12), textAlign: TextAlign.center)),
-          SizedBox(width: 28, child: Text(g.isNotEmpty && g != '0' ? g : '-', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12), textAlign: TextAlign.center)),
-          SizedBox(width: 28, child: Text(a.isNotEmpty && a != '0' ? a : '-', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12), textAlign: TextAlign.center)),
+          SizedBox(width: 36, child: Text(min.isNotEmpty ? min : '-', style: TextStyle(color: context.cTextSecondary, fontSize: 12), textAlign: TextAlign.center)),
+          SizedBox(width: 28, child: Text(g.isNotEmpty && g != '0' ? g : '-', style: TextStyle(color: context.cTextSecondary, fontSize: 12), textAlign: TextAlign.center)),
+          SizedBox(width: 28, child: Text(a.isNotEmpty && a != '0' ? a : '-', style: TextStyle(color: context.cTextSecondary, fontSize: 12), textAlign: TextAlign.center)),
         ]),
       ),
     );
@@ -1615,7 +1664,7 @@ class _CommentaryTab extends ConsumerWidget {
     return data.when(
       data: (entries) {
         if (entries.isEmpty) {
-          return const Center(child: Text('Commentary not available', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter')));
+          return Center(child: Text('Commentary not available', style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter')));
         }
         return ListView.builder(
           padding: const EdgeInsets.all(12),
@@ -1636,10 +1685,19 @@ class _CommentaryTab extends ConsumerWidget {
               final player2 = _m(e['assistStr'] != null ? {} : e['swap'] is Map ? _m(e['swap'])['playerIn'] ?? {} : {});
               final pName = _s(player['name'] ?? player['firstName'] ?? '');
               final teamName = _s(_m(e['team'])['name'] ?? '');
-              final score = _s(e['scoreStr'] ?? e['newScore'] ?? '');
+              final scoreRaw = e['scoreStr'] ?? e['newScore'];
+              final score = scoreRaw is List ? scoreRaw.join(' - ') : _s(scoreRaw);
               final assist = _s(e['assistStr'] ?? _s(_m(player2)['name'] ?? ''));
+              // FotMob events carry card color in e['card']
+              final card = _s(e['card']).toLowerCase();
 
-              if (type.contains('goal')) {
+              if (card.contains('yellowred')) {
+                text = '🟥 Second yellow — ${pName.isNotEmpty ? pName : 'Player'}${teamName.isNotEmpty ? ' ($teamName)' : ''}';
+              } else if (card.contains('yellow')) {
+                text = '🟨 Yellow card — ${pName.isNotEmpty ? pName : 'Player'}${teamName.isNotEmpty ? ' ($teamName)' : ''}';
+              } else if (card.contains('red')) {
+                text = '🟥 Red card — ${pName.isNotEmpty ? pName : 'Player'}${teamName.isNotEmpty ? ' ($teamName)' : ''}';
+              } else if (type.contains('goal')) {
                 text = '⚽ GOAL!${pName.isNotEmpty ? ' $pName' : ''}${score.isNotEmpty ? ' ($score)' : ''}${teamName.isNotEmpty ? ' — $teamName' : ''}${assist.isNotEmpty ? '\nAssist: $assist' : ''}';
               } else if (type.contains('yellowred') || type.contains('yellow-red')) {
                 text = '🟥 Second yellow — ${pName.isNotEmpty ? pName : 'Player'}${teamName.isNotEmpty ? ' ($teamName)' : ''}';
@@ -1680,7 +1738,7 @@ class _CommentaryTab extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: isGoal ? AppColors.accentGreen.withOpacity(0.15)
                           : isCard ? AppColors.accentRed.withOpacity(0.12)
-                          : AppColors.bgElevated,
+                          : context.cBgElevated,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(min.isNotEmpty ? "$min'" : '•',
@@ -1688,7 +1746,7 @@ class _CommentaryTab extends ConsumerWidget {
                         fontSize: 10, fontWeight: FontWeight.w700, fontFamily: 'Inter',
                         color: isGoal ? AppColors.accentGreen
                             : isCard ? AppColors.accentRed
-                            : AppColors.textMuted,
+                            : context.cTextMuted,
                       )),
                   ),
                 ),
@@ -1699,16 +1757,16 @@ class _CommentaryTab extends ConsumerWidget {
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: isGoal ? AppColors.accentGreen.withOpacity(0.06)
-                          : AppColors.bgCard,
+                          : context.cBgCard,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isGoal ? AppColors.accentGreen.withOpacity(0.2)
-                            : AppColors.border,
+                            : context.cBorder,
                       ),
                     ),
                     child: Text(text,
                       style: TextStyle(
-                        color: isGoal ? AppColors.textPrimary : AppColors.textSecondary,
+                        color: isGoal ? context.cTextPrimary : context.cTextSecondary,
                         fontSize: 12, fontFamily: 'Inter',
                         fontWeight: isGoal ? FontWeight.w600 : FontWeight.w400,
                       )),
@@ -1720,7 +1778,7 @@ class _CommentaryTab extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue, strokeWidth: 2)),
-      error: (e, _) => const Center(child: Text('Could not load commentary', style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter'))),
+      error: (e, _) => Center(child: Text('Could not load commentary', style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter'))),
     );
   }
 }

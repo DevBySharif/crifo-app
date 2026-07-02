@@ -42,6 +42,8 @@ class CriFOApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themeMode,
+      themeAnimationDuration: const Duration(milliseconds: 350),
+      themeAnimationCurve: Curves.easeOutCubic,
       home: const MainShell(),
     );
   }
@@ -78,6 +80,15 @@ class _MainShellState extends ConsumerState<MainShell> {
   Widget build(BuildContext context) {
     final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
     final fsWidget = ref.watch(tvFullscreenProvider);
+
+    // A screen requested TV playback (e.g. match "Where to watch") — jump to TV tab
+    ref.listen(tvPlayRequestProvider, (prev, next) {
+      if (next != null && _index != 2) {
+        // Pop pushed routes (match detail etc.) so the TV tab is visible
+        Navigator.of(context).popUntil((r) => r.isFirst);
+        setState(() => _index = 2);
+      }
+    });
 
     return Stack(
       children: [

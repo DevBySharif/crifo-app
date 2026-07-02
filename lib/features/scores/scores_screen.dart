@@ -87,13 +87,13 @@ class _ScoresScreenState extends ConsumerState<ScoresScreen> {
       lastDate: DateTime.now().add(const Duration(days: 365)),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.dark(
+          colorScheme: ColorScheme.dark(
             primary: AppColors.accentPrimary,
             onPrimary: Colors.white,
-            surface: AppColors.bgCard,
-            onSurface: AppColors.textPrimary,
+            surface: context.cBgCard,
+            onSurface: context.cTextPrimary,
           ),
-          dialogTheme: const DialogThemeData(backgroundColor: AppColors.bg),
+          dialogTheme: DialogThemeData(backgroundColor: context.cBg),
         ),
         child: child!,
       ),
@@ -114,7 +114,7 @@ class _ScoresScreenState extends ConsumerState<ScoresScreen> {
           Container(
             decoration: BoxDecoration(
               color: context.cBg,
-              border: const Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
+              border: Border(bottom: BorderSide(color: context.cBorder, width: 0.5)),
             ),
             child: Column(children: [
               Padding(
@@ -132,15 +132,15 @@ class _ScoresScreenState extends ConsumerState<ScoresScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
-                        color: AppColors.bgElevated,
+                        color: context.cBgElevated,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: context.cBorder),
                       ),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        const Icon(Icons.calendar_today_rounded, color: AppColors.textSecondary, size: 14),
+                        Icon(Icons.calendar_today_rounded, color: context.cTextSecondary, size: 14),
                         const SizedBox(width: 6),
                         Text(_formatHeaderDate(_selectedDate),
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12,
+                          style: TextStyle(color: context.cTextSecondary, fontSize: 12,
                               fontWeight: FontWeight.w600, fontFamily: 'Inter')),
                       ]),
                     ),
@@ -172,11 +172,11 @@ class _ScoresScreenState extends ConsumerState<ScoresScreen> {
                         margin: const EdgeInsets.symmetric(horizontal: 3),
                         decoration: BoxDecoration(
                           gradient: isSelected ? AppColors.primaryGradient : null,
-                          color: isSelected ? null : (isToday ? AppColors.bgElevated : AppColors.bgCard),
+                          color: isSelected ? null : (isToday ? context.cBgElevated : context.cBgCard),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: isSelected ? Colors.transparent
-                                : (isToday ? AppColors.borderLight : AppColors.border),
+                                : (isToday ? context.cBorderL : context.cBorder),
                           ),
                           boxShadow: isSelected ? [
                             BoxShadow(color: AppColors.accentPrimary.withValues(alpha: 0.3), blurRadius: 8),
@@ -186,11 +186,11 @@ class _ScoresScreenState extends ConsumerState<ScoresScreen> {
                           Text(isToday ? '•' : dayName,
                             style: TextStyle(fontSize: isToday ? 14 : 9, fontWeight: FontWeight.w700,
                               color: isSelected ? Colors.white
-                                  : (isToday ? AppColors.accentPrimary : AppColors.textMuted),
+                                  : (isToday ? AppColors.accentPrimary : context.cTextMuted),
                               fontFamily: 'Inter')),
                           Text('${dt.day}',
                             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, fontFamily: 'Inter',
-                              color: isSelected ? Colors.white : AppColors.textPrimary)),
+                              color: isSelected ? Colors.white : context.cTextPrimary)),
                         ]),
                       ),
                     );
@@ -212,15 +212,15 @@ class _ScoresScreenState extends ConsumerState<ScoresScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                         decoration: BoxDecoration(
                           gradient: active ? (f == Filter.live ? AppColors.liveGradient : AppColors.primaryGradient) : null,
-                          color: active ? null : AppColors.bgCard,
+                          color: active ? null : context.cBgCard,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: active ? Colors.transparent : AppColors.border,
+                            color: active ? Colors.transparent : context.cBorder,
                           ),
                         ),
                         child: Text(f.label,
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, fontFamily: 'Inter',
-                            color: active ? Colors.white : AppColors.textSecondary)),
+                            color: active ? Colors.white : context.cTextSecondary)),
                       ),
                     ),
                   );
@@ -236,7 +236,7 @@ class _ScoresScreenState extends ConsumerState<ScoresScreen> {
               loading: () => const Center(child: CircularProgressIndicator(
                 color: AppColors.accentPrimary, strokeWidth: 2.5)),
               error: (e, _) => Center(child: Text('Failed to load scores',
-                style: const TextStyle(color: AppColors.textMuted, fontFamily: 'Inter'))),
+                style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter'))),
             ),
           ),
         ]),
@@ -280,12 +280,12 @@ class _ScoresScreenState extends ConsumerState<ScoresScreen> {
     if (filtered.isEmpty) {
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 64, height: 64,
-          decoration: BoxDecoration(color: AppColors.bgElevated, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.border)),
-          child: const Icon(Icons.sports_soccer_rounded, color: AppColors.textMuted, size: 30)),
+          decoration: BoxDecoration(color: context.cBgElevated, borderRadius: BorderRadius.circular(20), border: Border.all(color: context.cBorder)),
+          child: Icon(Icons.sports_soccer_rounded, color: context.cTextMuted, size: 30)),
         const SizedBox(height: 16),
-        const Text('No matches found', style: TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+        Text('No matches found', style: TextStyle(color: context.cTextPrimary, fontSize: 15, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
         const SizedBox(height: 6),
-        const Text('Try a different date or filter', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontFamily: 'Inter')),
+        Text('Try a different date or filter', style: TextStyle(color: context.cTextMuted, fontSize: 12, fontFamily: 'Inter')),
       ]));
     }
 
@@ -334,17 +334,16 @@ class _LeagueBlockState extends State<_LeagueBlock> {
       // League header — tap to expand/collapse, long press to open league screen
       GestureDetector(
         onLongPress: () {
-          final id = widget.league['id'];
           if (id != null) Navigator.push(context, MaterialPageRoute(
-            builder: (_) => LeagueScreen(leagueId: _s(id), leagueName: name)));
+            builder: (_) => LeagueScreen(leagueId: _s(id), leagueName: name, existingMatches: _l(widget.league['matches']))));
         },
         onTap: () => setState(() => _expanded = !_expanded),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           decoration: BoxDecoration(
-            color: AppColors.bgCard,
+            color: context.cBgCard,
             border: Border(
-              bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.6), width: 0.5),
+              bottom: BorderSide(color: context.cBorder.withValues(alpha: 0.6), width: 0.5),
             ),
           ),
           child: Row(children: [
@@ -355,41 +354,41 @@ class _LeagueBlockState extends State<_LeagueBlock> {
             // League logo — tap to open league screen
             GestureDetector(
               onTap: () {
-                final lid = widget.league['id'];
+                final lid = id;
                 if (lid != null) Navigator.push(context, MaterialPageRoute(
                   builder: (_) => LeagueScreen(leagueId: _s(lid), leagueName: name, existingMatches: _l(widget.league['matches']))));
               },
               child: flagUrl != null
                 ? CachedNetworkImage(imageUrl: flagUrl, width: 20, height: 20,
-                    errorWidget: (_, __, ___) => const Icon(Icons.sports_soccer_rounded, size: 16, color: AppColors.textMuted))
-                : const Icon(Icons.sports_soccer_rounded, size: 16, color: AppColors.textMuted),
+                    errorWidget: (_, __, ___) => Icon(Icons.sports_soccer_rounded, size: 16, color: context.cTextMuted))
+                : Icon(Icons.sports_soccer_rounded, size: 16, color: context.cTextMuted),
             ),
             const SizedBox(width: 10),
             Expanded(child: GestureDetector(
               onTap: () {
-                final lid = widget.league['id'];
+                final lid = id;
                 if (lid != null) Navigator.push(context, MaterialPageRoute(
                   builder: (_) => LeagueScreen(leagueId: _s(lid), leagueName: name, existingMatches: _l(widget.league['matches']))));
               },
               child: Text(name,
-              style: const TextStyle(color: AppColors.textPrimary, fontSize: 13,
+              style: TextStyle(color: context.cTextPrimary, fontSize: 13,
                   fontWeight: FontWeight.w700, fontFamily: 'Inter')),
             )),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: AppColors.bgElevated,
+                color: context.cBgElevated,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text('${widget.matches.length}',
-                style: const TextStyle(fontSize: 10, color: AppColors.textSecondary,
+                style: TextStyle(fontSize: 10, color: context.cTextSecondary,
                     fontWeight: FontWeight.w600, fontFamily: 'Inter')),
             ),
             const SizedBox(width: 6),
             AnimatedRotation(
               turns: _expanded ? 0 : -0.25,
               duration: const Duration(milliseconds: 200),
-              child: const Icon(Icons.keyboard_arrow_down, color: AppColors.textMuted, size: 18),
+              child: Icon(Icons.keyboard_arrow_down, color: context.cTextMuted, size: 18),
             ),
           ]),
         ),
@@ -435,7 +434,7 @@ class _MatchItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isLive ? AppColors.live.withValues(alpha: 0.03) : null,
-          border: Border(bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.5), width: 0.5)),
+          border: Border(bottom: BorderSide(color: context.cBorder.withValues(alpha: 0.5), width: 0.5)),
         ),
         child: Row(children: [
           // Status
@@ -455,7 +454,7 @@ class _MatchItem extends StatelessWidget {
             else
               Text(finished ? 'FT' : _formatTime(status['utcTime']),
                 style: TextStyle(fontSize: 11, fontFamily: 'Inter',
-                  color: finished ? AppColors.textMuted : AppColors.textSecondary,
+                  color: finished ? context.cTextMuted : context.cTextSecondary,
                   fontWeight: finished ? FontWeight.w400 : FontWeight.w600),
                 textAlign: TextAlign.center),
           ])),
@@ -467,7 +466,7 @@ class _MatchItem extends StatelessWidget {
             _MiniRow(team: away, score: parts.length > 1 ? parts.last.trim() : '',
                 win: finished && aG > hG),
           ])),
-          const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 14),
+          Icon(Icons.chevron_right, color: context.cTextMuted, size: 14),
         ]),
       ),
     );
@@ -500,12 +499,12 @@ class _MiniRow extends StatelessWidget {
       const SizedBox(width: 8),
       Expanded(child: Text(_s(team['name']),
         style: TextStyle(fontSize: 12, fontWeight: win ? FontWeight.w700 : FontWeight.w400,
-          color: win ? AppColors.textPrimary : AppColors.textSecondary, fontFamily: 'Inter'),
+          color: win ? context.cTextPrimary : context.cTextSecondary, fontFamily: 'Inter'),
         overflow: TextOverflow.ellipsis)),
       if (score.isNotEmpty)
         Text(score, style: TextStyle(fontFamily: 'Oswald', fontSize: 14,
           fontWeight: win ? FontWeight.w700 : FontWeight.w400,
-          color: win ? AppColors.textPrimary : AppColors.textMuted)),
+          color: win ? context.cTextPrimary : context.cTextMuted)),
     ]);
   }
 }

@@ -31,6 +31,14 @@ final _teamProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, 
   Map<String, dynamic> fixtures = {};
   try { stats = await FotmobClient.getTeamStats(id); } catch (_) {}
   try { fixtures = await FotmobClient.getTeamFixtures(id); } catch (_) {}
+  // Dedicated squad endpoint — overview often lacks full squad
+  if ((details['squad'] == null) ||
+      (details['squad'] is Map && ((details['squad'] as Map)['squad'] as List?)?.isEmpty != false)) {
+    try {
+      final sq = await FotmobClient.getTeamSquad(id);
+      if (sq.isNotEmpty) details['squad'] = sq['squad'] is Map ? sq['squad'] : sq;
+    } catch (_) {}
+  }
   return {'overview': details, 'stats': stats, 'fixtures': fixtures};
 });
 
@@ -69,22 +77,22 @@ class _TeamScreenState extends ConsumerState<TeamScreen>
   Widget build(BuildContext context) {
     final data = ref.watch(_teamProvider(widget.teamId));
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: context.cBg,
       appBar: AppBar(
-        backgroundColor: AppColors.bg,
-        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: context.cBg,
+        leading: BackButton(color: context.cTextPrimary),
         title: Row(children: [
           CachedNetworkImage(imageUrl: FotmobClient.teamLogoUrl(widget.teamId), width: 24, height: 24,
-            errorWidget: (_, __, ___) => const SizedBox(width: 24)),
-          const SizedBox(width: 8),
-          Text(widget.teamName ?? 'Team', style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
+            errorWidget: (_, __, ___) => SizedBox(width: 24)),
+          SizedBox(width: 8),
+          Text(widget.teamName ?? 'Team', style: TextStyle(color: context.cTextPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
         ]),
         bottom: TabBar(
           controller: _tabs,
           indicatorColor: AppColors.accentBlue,
           indicatorWeight: 3,
           labelColor: AppColors.accentBlue,
-          unselectedLabelColor: AppColors.textMuted,
+          unselectedLabelColor: context.cTextMuted,
           labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
           tabs: const [
             Tab(text: 'OVERVIEW'), Tab(text: 'FIXTURES'), Tab(text: 'SQUAD'), Tab(text: 'STATS'),
@@ -98,8 +106,8 @@ class _TeamScreenState extends ConsumerState<TeamScreen>
           _SquadTab(data: _m(d['overview'])),
           _TeamStatsTab(data: _m(d['stats'])),
         ]),
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
-        error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: AppColors.textMuted))),
+        loading: () => Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
+        error: (e, _) => Center(child: Text('Error: $e', style: TextStyle(color: context.cTextMuted))),
       ),
     );
   }
@@ -114,9 +122,9 @@ class _GlassCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: padding ?? const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: Colors.white.withOpacity(0.04),
+      color: context.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Colors.white.withOpacity(0.06)),
+      border: Border.all(color: context.isDark ? Colors.white.withOpacity(0.06) : AppColors.borderLightMode),
     ),
     child: child,
   );
@@ -133,8 +141,8 @@ class _SectionTitle extends StatelessWidget {
         gradient: const LinearGradient(colors: [AppColors.accentBlue, AppColors.accentPurple]),
         borderRadius: BorderRadius.circular(2),
       )),
-      const SizedBox(width: 10),
-      Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary, letterSpacing: 0.3)),
+      SizedBox(width: 10),
+      Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: context.cTextPrimary, letterSpacing: 0.3)),
     ]),
   );
 }
@@ -171,30 +179,40 @@ class _OverviewTab extends StatelessWidget {
               child: ClipOval(
                 child: CachedNetworkImage(imageUrl: FotmobClient.teamLogoUrl(details['id']), width: 100, height: 100, fit: BoxFit.cover,
                   errorWidget: (_, __, ___) => Container(
-                    color: AppColors.bgElevated,
-                    child: const Icon(Icons.shield, size: 50, color: AppColors.textMuted)),
+                    color: context.cBgElevated,
+                    child: Icon(Icons.shield, size: 50, color: context.cTextMuted)),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            Text(name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.3)),
+            SizedBox(height: 16),
+            // Hero sits on a dark gradient in both themes — keep text light
+            Text(name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFFF0F0FF), letterSpacing: -0.3)),
             if (country.isNotEmpty) ...[
               const SizedBox(height: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.06),
+                  color: Colors.white.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.public, size: 13, color: AppColors.textSecondary),
+                  const Icon(Icons.public, size: 13, color: Color(0xFFB0B0C8)),
                   const SizedBox(width: 4),
-                  Text(country, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  Text(country, style: const TextStyle(color: Color(0xFFB0B0C8), fontSize: 12)),
                 ]),
               ),
             ],
           ]),
         ),
+
+        // Recent form (W/D/L chips)
+        ..._buildForm(context),
+
+        // Next match card
+        ..._buildNextMatch(context),
+
+        // League position
+        ..._buildTablePos(context),
 
         // Stadium card
         if (venueName.isNotEmpty) ...[
@@ -210,12 +228,12 @@ class _OverviewTab extends StatelessWidget {
                 ),
                 child: const Icon(Icons.stadium_outlined, color: AppColors.accentBlue, size: 22),
               ),
-              const SizedBox(width: 14),
+              SizedBox(width: 14),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(venueName, style: const TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
+                Text(venueName, style: TextStyle(color: context.cTextPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
                 if (venueCap.isNotEmpty)
                   Text('Capacity: ${int.tryParse(venueCap) != null ? _fmtNum(int.parse(venueCap)) : venueCap}',
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                    style: TextStyle(color: context.cTextMuted, fontSize: 12)),
               ])),
             ]),
           ),
@@ -233,6 +251,124 @@ class _OverviewTab extends StatelessWidget {
     }
     return buf.toString();
   }
+
+  List<Widget> _buildForm(BuildContext context) {
+    final overview = _m(data['overview']);
+    final form = _l(overview['teamForm']);
+    if (form.isEmpty) return [];
+    return [
+      const _SectionTitle('RECENT FORM'),
+      _GlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: form.take(6).map((f) {
+            final fm = _m(f);
+            final rs = _s(fm['resultString']).toUpperCase();
+            final result = fm['result'];
+            final letter = rs.isNotEmpty ? rs[0]
+                : result == 1 ? 'W' : result == 0 ? 'D' : 'L';
+            final color = letter == 'W' ? AppColors.accentGreen
+                : letter == 'D' ? context.cTextMuted : AppColors.accentRed;
+            final score = _s(fm['score']);
+            return Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 30, height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle,
+                  border: Border.all(color: color.withOpacity(0.5))),
+                child: Text(letter, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w800)),
+              ),
+              if (score.isNotEmpty) ...[
+                SizedBox(height: 4),
+                Text(score, style: TextStyle(color: context.cTextMuted, fontSize: 9)),
+              ],
+            ]);
+          }).toList(),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildNextMatch(BuildContext context) {
+    final overview = _m(data['overview']);
+    final nm = _m(overview['nextMatch']);
+    if (nm.isEmpty) return [];
+    final home = _m(nm['home']);
+    final away = _m(nm['away']);
+    if (home.isEmpty && away.isEmpty) return [];
+    final utc = _s(_m(nm['status'])['utcTime']);
+    String when = '';
+    if (utc.isNotEmpty) {
+      try {
+        final dt = DateTime.parse(utc).toLocal();
+        when = '${dt.day}/${dt.month} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      } catch (_) {}
+    }
+    return [
+      const _SectionTitle('NEXT MATCH'),
+      GestureDetector(
+        onTap: () { final id = _s(nm['id']); if (id.isNotEmpty) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => MatchDetailScreen(matchId: id))); } },
+        child: _GlassCard(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            Expanded(child: Column(children: [
+              ClipOval(child: CachedNetworkImage(imageUrl: FotmobClient.teamLogoUrl(home['id']),
+                width: 36, height: 36, errorWidget: (_, __, ___) => Icon(Icons.shield, size: 24, color: context.cTextMuted))),
+              SizedBox(height: 6),
+              Text(_s(home['name']), style: TextStyle(color: context.cTextPrimary, fontSize: 11),
+                maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+            ])),
+            Column(children: [
+              Text('VS', style: TextStyle(color: context.cTextMuted, fontSize: 14, fontWeight: FontWeight.w800, fontFamily: 'Oswald')),
+              if (when.isNotEmpty) ...[
+                SizedBox(height: 4),
+                Text(when, style: TextStyle(color: context.cTextSecondary, fontSize: 10)),
+              ],
+            ]),
+            Expanded(child: Column(children: [
+              ClipOval(child: CachedNetworkImage(imageUrl: FotmobClient.teamLogoUrl(away['id']),
+                width: 36, height: 36, errorWidget: (_, __, ___) => Icon(Icons.shield, size: 24, color: context.cTextMuted))),
+              SizedBox(height: 6),
+              Text(_s(away['name']), style: TextStyle(color: context.cTextPrimary, fontSize: 11),
+                maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+            ])),
+          ]),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildTablePos(BuildContext context) {
+    final overview = _m(data['overview']);
+    // table can be under overview['table'] (list) or ['teamTableInfo']
+    final tinfo = _m(overview['teamTableInfo']);
+    if (tinfo.isEmpty) return [];
+    final pos = _s(tinfo['position'] ?? _m(tinfo['tableEntry'])['position']);
+    final leagueName = _s(tinfo['leagueName'] ?? _m(tinfo['league'])['name']);
+    if (pos.isEmpty) return [];
+    return [
+      const _SectionTitle('LEAGUE POSITION'),
+      _GlassCard(
+        padding: const EdgeInsets.all(16),
+        child: Row(children: [
+          Container(
+            width: 44, height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text('#$pos', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Oswald')),
+          ),
+          SizedBox(width: 14),
+          Expanded(child: Text(leagueName.isNotEmpty ? leagueName : 'Current season',
+            style: TextStyle(color: context.cTextPrimary, fontSize: 14, fontWeight: FontWeight.w600))),
+        ]),
+      ),
+    ];
+  }
 }
 
 // ─── FIXTURES TAB ──────────────────────────────────────────────────────────
@@ -249,7 +385,7 @@ class _TeamFixturesTab extends ConsumerWidget {
         ? _l(allFixtures['fixtures'])
         : _l(fixturesData['matches'] ?? []);
     if (fixtures.isEmpty) {
-      return const Center(child: Text('No fixtures', style: TextStyle(color: AppColors.textMuted)));
+      return Center(child: Text('No fixtures', style: TextStyle(color: context.cTextMuted)));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(12),
@@ -284,17 +420,17 @@ class _TeamFixturesTab extends ConsumerWidget {
                   ClipOval(
                     child: CachedNetworkImage(
                       imageUrl: FotmobClient.teamLogoUrl(home['id']), width: 22, height: 22, fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => const Icon(Icons.sports_soccer, size: 16, color: AppColors.textMuted)),
+                      errorWidget: (_, __, ___) => Icon(Icons.sports_soccer, size: 16, color: context.cTextMuted)),
                   ),
-                  const SizedBox(width: 6),
-                  Expanded(child: Text(_s(home['name']), style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
+                  SizedBox(width: 6),
+                  Expanded(child: Text(_s(home['name']), style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontWeight: FontWeight.w600),
                     maxLines: 1, overflow: TextOverflow.ellipsis)),
                 ])),
                 const SizedBox(width: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: isLive ? AppColors.live.withOpacity(0.12) : AppColors.bgElevated,
+                    color: isLive ? AppColors.live.withOpacity(0.12) : context.cBgElevated,
                     borderRadius: BorderRadius.circular(8),
                     border: isLive ? Border.all(color: AppColors.live.withOpacity(0.3)) : null,
                   ),
@@ -302,19 +438,19 @@ class _TeamFixturesTab extends ConsumerWidget {
                     score.isNotEmpty ? score : timeStr,
                     style: TextStyle(
                       fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'Oswald',
-                      color: isLive ? AppColors.live : finished ? AppColors.textSecondary : AppColors.textPrimary),
+                      color: isLive ? AppColors.live : finished ? context.cTextSecondary : context.cTextPrimary),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 // Away team
                 Expanded(child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                  Expanded(child: Text(_s(away['name']), style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600),
+                  Expanded(child: Text(_s(away['name']), style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontWeight: FontWeight.w600),
                     textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis)),
                   const SizedBox(width: 6),
                   ClipOval(
                     child: CachedNetworkImage(
                       imageUrl: FotmobClient.teamLogoUrl(away['id']), width: 22, height: 22, fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => const Icon(Icons.sports_soccer, size: 16, color: AppColors.textMuted)),
+                      errorWidget: (_, __, ___) => Icon(Icons.sports_soccer, size: 16, color: context.cTextMuted)),
                   ),
                 ])),
               ]),
@@ -336,7 +472,7 @@ class _SquadTab extends StatelessWidget {
     final squadObj = _m(data['squad']);
     final groups = _l(squadObj['squad']);
     if (groups.isEmpty) {
-      return const Center(child: Text('No squad data', style: TextStyle(color: AppColors.textMuted)));
+      return Center(child: Text('No squad data', style: TextStyle(color: context.cTextMuted)));
     }
 
     return ListView(
@@ -355,10 +491,10 @@ class _SquadTab extends StatelessWidget {
                   gradient: const LinearGradient(colors: [AppColors.accentBlue, AppColors.accentPurple]),
                   borderRadius: BorderRadius.circular(2),
                 )),
-                const SizedBox(width: 8),
-                Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textMuted, letterSpacing: 1.5)),
-                const Spacer(),
-                Text('${members.length}', style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                SizedBox(width: 8),
+                Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.cTextMuted, letterSpacing: 1.5)),
+                Spacer(),
+                Text('${members.length}', style: TextStyle(color: context.cTextMuted, fontSize: 10)),
               ]),
             ),
             ...members.map((m) {
@@ -383,11 +519,11 @@ class _SquadTab extends StatelessWidget {
                         child: pid.isNotEmpty
                           ? CachedNetworkImage(imageUrl: FotmobClient.playerImageUrl(pid), width: 36, height: 36, fit: BoxFit.cover,
                               errorWidget: (_, __, ___) => Container(
-                                color: AppColors.bgElevated,
-                                child: const Icon(Icons.person, size: 20, color: AppColors.textMuted)))
+                                color: context.cBgElevated,
+                                child: Icon(Icons.person, size: 20, color: context.cTextMuted)))
                           : Container(
-                            color: AppColors.bgElevated,
-                            child: const Icon(Icons.person, size: 20, color: AppColors.textMuted)),
+                            color: context.cBgElevated,
+                            child: Icon(Icons.person, size: 20, color: context.cTextMuted)),
                       ),
                       const SizedBox(width: 10),
                       if (shirt.isNotEmpty)
@@ -395,13 +531,13 @@ class _SquadTab extends StatelessWidget {
                           width: 26, height: 26,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: AppColors.bgElevated,
+                            color: context.cBgElevated,
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text(shirt, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary, fontFamily: 'Oswald')),
+                          child: Text(shirt, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: context.cTextSecondary, fontFamily: 'Oswald')),
                         ),
-                      if (shirt.isNotEmpty) const SizedBox(width: 8),
-                      Expanded(child: Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      if (shirt.isNotEmpty) SizedBox(width: 8),
+                      Expanded(child: Text(name, style: TextStyle(color: context.cTextPrimary, fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis)),
                       if (pos.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -448,7 +584,7 @@ class _TeamStatsTab extends StatelessWidget {
     }
 
     if (topLists.isEmpty) {
-      return const Center(child: Text('No stats available', style: TextStyle(color: AppColors.textMuted)));
+      return Center(child: Text('No stats available', style: TextStyle(color: context.cTextMuted)));
     }
 
     return ListView(
@@ -469,9 +605,9 @@ class _TeamStatsTab extends StatelessWidget {
                   gradient: const LinearGradient(colors: [AppColors.accentBlue, AppColors.accentPurple]),
                   borderRadius: BorderRadius.circular(2),
                 )),
-                const SizedBox(width: 8),
-                Text(title.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                    color: AppColors.textMuted, letterSpacing: 1.5)),
+                SizedBox(width: 8),
+                Text(title.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                    color: context.cTextMuted, letterSpacing: 1.5)),
               ]),
             ),
             ...players.take(5).toList().asMap().entries.map((e) {
@@ -493,22 +629,22 @@ class _TeamStatsTab extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     child: Row(children: [
                       SizedBox(width: 22, child: Text('${idx + 1}',
-                        style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600))),
+                        style: TextStyle(color: context.cTextMuted, fontSize: 11, fontWeight: FontWeight.w600))),
                       if (pid.isNotEmpty)
                         ClipOval(child: CachedNetworkImage(imageUrl: FotmobClient.playerImageUrl(pid),
                           width: 32, height: 32, fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => Container(color: AppColors.bgElevated,
-                            child: const Icon(Icons.person, size: 18, color: AppColors.textMuted))))
+                          errorWidget: (_, __, ___) => Container(color: context.cBgElevated,
+                            child: Icon(Icons.person, size: 18, color: context.cTextMuted))))
                       else
-                        Container(width: 32, height: 32, decoration: const BoxDecoration(
-                          color: AppColors.bgElevated, shape: BoxShape.circle),
-                          child: const Icon(Icons.person, size: 18, color: AppColors.textMuted)),
-                      const SizedBox(width: 10),
+                        Container(width: 32, height: 32, decoration: BoxDecoration(
+                          color: context.cBgElevated, shape: BoxShape.circle),
+                          child: Icon(Icons.person, size: 18, color: context.cTextMuted)),
+                      SizedBox(width: 10),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
+                        Text(name, style: TextStyle(color: context.cTextPrimary, fontSize: 13, fontWeight: FontWeight.w500),
                           maxLines: 1, overflow: TextOverflow.ellipsis),
                         if (teamName.isNotEmpty)
-                          Text(teamName, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                          Text(teamName, style: TextStyle(color: context.cTextMuted, fontSize: 10)),
                       ])),
                       Container(
                         width: 38, height: 38,

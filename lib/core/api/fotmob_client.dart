@@ -20,6 +20,20 @@ String _generateXMasToken(String fullUrl) {
   return base64.encode(utf8.encode(jsonEncode({'body': body, 'signature': signature})));
 }
 
+// Decode common HTML entities in news titles/sources (e.g. &#8211; → –)
+String _decodeEntities(String s) {
+  if (!s.contains('&')) return s;
+  return s
+      .replaceAllMapped(RegExp(r'&#(\d+);'), (m) => String.fromCharCode(int.parse(m[1]!)))
+      .replaceAllMapped(RegExp(r'&#x([0-9A-Fa-f]+);'), (m) => String.fromCharCode(int.parse(m[1]!, radix: 16)))
+      .replaceAll('&amp;', '&')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&apos;', "'")
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>');
+}
+
 // In-memory response cache — max 60 entries, 5-min TTL, LRU eviction
 const _kMaxCache = 60;
 final _cache = <String, ({Map<String, dynamic> data, DateTime expiry})>{};
@@ -244,10 +258,10 @@ class FotmobClient {
     final data = await _get('tlnews', params: {'id': id, 'type': 'league', 'language': 'en-GB', 'startIndex': '0'}, ttl: const Duration(minutes: 30));
     final items = (data['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     return items.map((n) => {
-      'title': n['title']?.toString() ?? '',
+      'title': _decodeEntities(n['title']?.toString() ?? ''),
       'imageUrl': n['imageUrl']?.toString() ?? '',
       'url': (n['page'] as Map?)?.containsKey('url') == true ? n['page']['url'].toString() : '',
-      'source': n['sourceStr']?.toString() ?? '',
+      'source': _decodeEntities(n['sourceStr']?.toString() ?? ''),
     }).toList();
   }
 
@@ -267,10 +281,10 @@ class FotmobClient {
     final res = await _get('tlnews', params: {'id': '47', 'type': 'league', 'language': 'en-GB', 'startIndex': '0'});
     final items = (res['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     return items.map((n) => {
-      'title': n['title']?.toString() ?? '',
+      'title': _decodeEntities(n['title']?.toString() ?? ''),
       'imageUrl': n['imageUrl']?.toString() ?? '',
       'url': (n['page'] as Map?)?.containsKey('url') == true ? n['page']['url'].toString() : '',
-      'source': n['sourceStr']?.toString() ?? '',
+      'source': _decodeEntities(n['sourceStr']?.toString() ?? ''),
     }).toList();
   }
 

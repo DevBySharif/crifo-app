@@ -15,6 +15,27 @@ final _searchProvider = FutureProvider.family<List<Map<String, dynamic>>, String
   return FotmobClient.search(term);
 });
 
+// All countries + their leagues (FotMob allLeagues endpoint)
+final _countriesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final data = await FotmobClient.getAllCountries();
+  final out = <Map<String, dynamic>>[];
+  // International competitions first
+  for (final section in [data['international'], data['countries']]) {
+    if (section is! List) continue;
+    for (final c in section) {
+      if (c is! Map) continue;
+      final cm = c.cast<String, dynamic>();
+      final leagues = (cm['leagues'] as List?)
+              ?.whereType<Map>()
+              .map((l) => l.cast<String, dynamic>())
+              .toList() ?? [];
+      if (leagues.isEmpty) continue;
+      out.add({'name': _s(cm['name'] ?? cm['ccode']), 'ccode': _s(cm['ccode']), 'leagues': leagues});
+    }
+  }
+  return out;
+});
+
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
 
@@ -75,10 +96,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
                   decoration: BoxDecoration(
-                    color: AppColors.bgInput,
+                    color: context.cBgInput,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: _focused ? AppColors.accentPrimary : AppColors.border,
+                      color: _focused ? AppColors.accentPrimary : context.cBorder,
                       width: _focused ? 1.5 : 1,
                     ),
                     boxShadow: _focused ? [
@@ -89,17 +110,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     Padding(
                       padding: const EdgeInsets.only(left: 14),
                       child: Icon(Icons.search_rounded,
-                        color: _focused ? AppColors.accentPrimary : AppColors.textMuted, size: 22),
+                        color: _focused ? AppColors.accentPrimary : context.cTextMuted, size: 22),
                     ),
                     Expanded(
                       child: TextField(
                         controller: _ctrl,
                         focusNode: _focusNode,
                         onChanged: (v) => setState(() => _query = v),
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 15, fontFamily: 'Inter'),
+                        style: TextStyle(color: context.cTextPrimary, fontSize: 15, fontFamily: 'Inter'),
                         decoration: InputDecoration(
                           hintText: 'Teams, players, leagues...',
-                          hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 14, fontFamily: 'Inter'),
+                          hintStyle: TextStyle(color: context.cTextMuted, fontSize: 14, fontFamily: 'Inter'),
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
@@ -109,8 +130,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                   onTap: () { _ctrl.clear(); setState(() => _query = ''); },
                                   child: Container(
                                     margin: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(color: AppColors.bgElevated, shape: BoxShape.circle),
-                                    child: const Icon(Icons.close, color: AppColors.textSecondary, size: 16),
+                                    decoration: BoxDecoration(color: context.cBgElevated, shape: BoxShape.circle),
+                                    child: Icon(Icons.close, color: context.cTextSecondary, size: 16),
                                   ),
                                 )
                               : null,
@@ -126,13 +147,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           // ── Results ──
           Expanded(
             child: results == null
-                ? _SearchPlaceholder()
+                ? _SearchPlaceholder(onSuggestion: (t) {
+                    _ctrl.text = t;
+                    setState(() => _query = t);
+                  })
                 : results.when(
                     data: (d) => _SearchResults(hits: d, query: _query),
                     loading: () => const Center(child: CircularProgressIndicator(
                       color: AppColors.accentPrimary, strokeWidth: 2.5)),
-                    error: (e, _) => const Center(child: Text('Search failed',
-                      style: TextStyle(color: AppColors.textMuted, fontFamily: 'Inter'))),
+                    error: (e, _) => Center(child: Text('Search failed',
+                      style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter'))),
                   ),
           ),
         ]),
@@ -141,61 +165,125 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 }
 
-class _SearchPlaceholder extends StatelessWidget {
+class _SearchPlaceholder extends ConsumerWidget {
+  final void Function(String) onSuggestion;
+  const _SearchPlaceholder({required this.onSuggestion});
+
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(
-          width: 80, height: 80,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.bgElevated, AppColors.bgCard],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.border),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final countries = ref.watch(_countriesProvider);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+      children: [
+        const SizedBox(height: 8),
+        Text('QUICK SEARCH', style: TextStyle(
+          color: context.cTextMuted, fontSize: 11, fontWeight: FontWeight.w700,
+          fontFamily: 'Inter', letterSpacing: 1.5)),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          _SuggestionPill(label: '⚽ Premier League', term: 'Premier League', onTap: onSuggestion),
+          _SuggestionPill(label: '🏆 Champions League', term: 'Champions League', onTap: onSuggestion),
+          _SuggestionPill(label: '🦁 Arsenal', term: 'Arsenal', onTap: onSuggestion),
+          _SuggestionPill(label: '🌟 Ronaldo', term: 'Ronaldo', onTap: onSuggestion),
+          _SuggestionPill(label: '🐐 Messi', term: 'Messi', onTap: onSuggestion),
+          _SuggestionPill(label: '🇧🇩 Bangladesh', term: 'Bangladesh', onTap: onSuggestion),
+        ]),
+        const SizedBox(height: 24),
+        Text('BROWSE LEAGUES', style: TextStyle(
+          color: context.cTextMuted, fontSize: 11, fontWeight: FontWeight.w700,
+          fontFamily: 'Inter', letterSpacing: 1.5)),
+        const SizedBox(height: 10),
+        countries.when(
+          data: (list) => Column(children: [
+            for (final c in list) _CountryTile(country: c),
+          ]),
+          loading: () => const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator(color: AppColors.accentPrimary, strokeWidth: 2.5)),
           ),
-          child: ShaderMask(
-            shaderCallback: (b) => AppColors.primaryGradient.createShader(b),
-            child: const Icon(Icons.manage_search_rounded, size: 40, color: Colors.white),
+          error: (e, _) => Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: Text('Could not load leagues',
+              style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter', fontSize: 12))),
           ),
         ),
-        const SizedBox(height: 20),
-        const Text('Find anything', style: TextStyle(
-          color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w700, fontFamily: 'Inter')),
-        const SizedBox(height: 8),
-        const Text('Search teams, players or leagues', style: TextStyle(
-          color: AppColors.textMuted, fontSize: 13, fontFamily: 'Inter')),
-        const SizedBox(height: 24),
-        // Quick suggestions
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          _SuggestionPill(label: '⚽ Premier League'),
-          _SuggestionPill(label: '🏆 Champions League'),
-          _SuggestionPill(label: '🦁 Arsenal'),
-          _SuggestionPill(label: '🌟 Ronaldo'),
-        ]),
-      ]),
+      ],
+    );
+  }
+}
+
+class _CountryTile extends StatelessWidget {
+  final Map<String, dynamic> country;
+  const _CountryTile({required this.country});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = _s(country['name']);
+    final ccode = _s(country['ccode']);
+    final leagues = (country['leagues'] as List).cast<Map<String, dynamic>>();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: context.cBgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.cBorder),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: const EdgeInsets.only(bottom: 6),
+          iconColor: context.cTextMuted,
+          collapsedIconColor: context.cTextMuted,
+          leading: ccode.isNotEmpty
+              ? ClipOval(child: CachedNetworkImage(
+                  imageUrl: 'https://images.fotmob.com/image_resources/logo/teamlogo/${ccode.toLowerCase()}.png',
+                  width: 24, height: 24, fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => Icon(Icons.flag_rounded, size: 18, color: context.cTextMuted)))
+              : Icon(Icons.public_rounded, size: 18, color: context.cTextMuted),
+          title: Text(name, style: TextStyle(
+            color: context.cTextPrimary, fontSize: 13, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+          children: [
+            for (final l in leagues)
+              ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.only(left: 48, right: 16),
+                leading: CachedNetworkImage(
+                  imageUrl: 'https://images.fotmob.com/image_resources/logo/leaguelogo/${_s(l['id'])}_small.png',
+                  width: 18, height: 18,
+                  errorWidget: (_, __, ___) => Icon(Icons.sports_soccer, size: 14, color: context.cTextMuted)),
+                title: Text(_s(l['name']), style: TextStyle(
+                  color: context.cTextSecondary, fontSize: 12.5, fontFamily: 'Inter')),
+                onTap: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => LeagueScreen(leagueId: _s(l['id']), leagueName: _s(l['name'])))),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
 
 class _SuggestionPill extends StatelessWidget {
   final String label;
-  const _SuggestionPill({required this.label});
+  final String term;
+  final void Function(String) onTap;
+  const _SuggestionPill({required this.label, required this.term, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-      decoration: BoxDecoration(
-        color: AppColors.bgElevated,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
+    return GestureDetector(
+      onTap: () => onTap(term),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: context.cBgElevated,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: context.cBorder),
+        ),
+        child: Text(label, style: TextStyle(
+          color: context.cTextSecondary, fontSize: 12, fontFamily: 'Inter', fontWeight: FontWeight.w500)),
       ),
-      child: Text(label, style: const TextStyle(
-        color: AppColors.textSecondary, fontSize: 12, fontFamily: 'Inter', fontWeight: FontWeight.w500)),
     );
   }
 }
@@ -209,13 +297,13 @@ class _SearchResults extends StatelessWidget {
   Widget build(BuildContext context) {
     if (hits.isEmpty) {
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.search_off_rounded, size: 48, color: AppColors.textMuted),
+        Icon(Icons.search_off_rounded, size: 48, color: context.cTextMuted),
         const SizedBox(height: 12),
         Text('No results for "$query"',
-          style: const TextStyle(color: AppColors.textPrimary, fontSize: 15,
+          style: TextStyle(color: context.cTextPrimary, fontSize: 15,
               fontWeight: FontWeight.w600, fontFamily: 'Inter')),
         const SizedBox(height: 6),
-        const Text('Try a different search term', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontFamily: 'Inter')),
+        Text('Try a different search term', style: TextStyle(color: context.cTextMuted, fontSize: 12, fontFamily: 'Inter')),
       ]));
     }
 
@@ -226,7 +314,13 @@ class _SearchResults extends StatelessWidget {
         final hit  = hits[i];
         final type = _s(hit['type']).toLowerCase();
         final id   = _s(hit['id']);
-        final name = _s(hit['name']).isNotEmpty ? _s(hit['name']) : _s(hit['teamName']);
+        String name = _s(hit['name']).isNotEmpty ? _s(hit['name']) : _s(hit['teamName']);
+        if (name.isEmpty && type == 'match') {
+          final ht = hit['homeTeam'], at = hit['awayTeam'];
+          final h = _s(hit['homeName'] ?? hit['homeTeamName'] ?? (ht is Map ? ht['name'] : ''));
+          final a = _s(hit['awayName'] ?? hit['awayTeamName'] ?? (at is Map ? at['name'] : ''));
+          if (h.isNotEmpty || a.isNotEmpty) name = '$h vs $a';
+        }
         // Subtitle: team for player, country for team/league, score for match
         final subtitle = type == 'player'
             ? _s(hit['teamName'] ?? hit['team'] ?? '')
@@ -253,15 +347,15 @@ class _SearchResults extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.bgCard,
+              color: context.cBgCard,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: context.cBorder),
             ),
             child: Row(children: [
               _ResultAvatar(type: type, id: id),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14,
+                Text(name, style: TextStyle(color: context.cTextPrimary, fontSize: 14,
                     fontWeight: FontWeight.w600, fontFamily: 'Inter')),
                 const SizedBox(height: 3),
                 Row(children: [
@@ -277,13 +371,13 @@ class _SearchResults extends StatelessWidget {
                   ),
                   if (subtitle.isNotEmpty) ...[
                     const SizedBox(width: 6),
-                    Expanded(child: Text(subtitle, style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 11, fontFamily: 'Inter'),
+                    Expanded(child: Text(subtitle, style: TextStyle(
+                      color: context.cTextSecondary, fontSize: 11, fontFamily: 'Inter'),
                       maxLines: 1, overflow: TextOverflow.ellipsis)),
                   ],
                 ]),
               ])),
-              const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 18),
+              Icon(Icons.chevron_right, color: context.cTextMuted, size: 18),
             ]),
           ),
         );
@@ -298,7 +392,7 @@ class _SearchResults extends StatelessWidget {
       case 'match': return AppColors.accentOrange;
       case 'league':
       case 'tournament': return AppColors.accentPurple;
-      default: return AppColors.textMuted;
+      default: return AppColors.textSecondary;
     }
   }
 }
@@ -317,16 +411,16 @@ class _ResultAvatar extends StatelessWidget {
     return Container(
       width: 46, height: 46,
       decoration: BoxDecoration(
-        color: AppColors.bgElevated,
+        color: context.cBgElevated,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.cBorder),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(13),
         child: url != null
             ? CachedNetworkImage(imageUrl: url, fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => Icon(_icon(type), color: AppColors.textMuted, size: 22))
-            : Icon(_icon(type), color: AppColors.textMuted, size: 22),
+                errorWidget: (_, __, ___) => Icon(_icon(type), color: context.cTextMuted, size: 22))
+            : Icon(_icon(type), color: context.cTextMuted, size: 22),
       ),
     );
   }

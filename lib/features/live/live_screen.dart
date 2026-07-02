@@ -39,32 +39,32 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
   Widget build(BuildContext context) {
     final data = ref.watch(_liveProvider);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: context.cBg,
       body: SafeArea(
         child: Column(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(children: [
-                const Text('LIVE', style: TextStyle(fontFamily: 'Oswald', fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                Text('LIVE', style: TextStyle(fontFamily: 'Oswald', fontSize: 22, fontWeight: FontWeight.w700, color: context.cTextPrimary)),
                 const Spacer(),
                 Container(
                   width: 6, height: 6,
                   decoration: const BoxDecoration(color: AppColors.live, shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 6),
-                const Text('AUTO REFRESH 30s', style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                Text('AUTO REFRESH 30s', style: TextStyle(color: context.cTextMuted, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
               ]),
             ),
-            const Divider(height: 1, color: AppColors.border),
+            Divider(height: 1, color: context.cBorder),
             Expanded(
               child: data.when(
                 data: (matches) => _LiveBody(matches: matches),
                 loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accentBlue)),
                 error: (e, _) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.wifi_off, color: AppColors.textMuted, size: 48),
+                  Icon(Icons.wifi_off, color: context.cTextMuted, size: 48),
                   const SizedBox(height: 12),
-                  const Text('Failed to load live scores', style: TextStyle(color: AppColors.textPrimary, fontSize: 15)),
+                  Text('Failed to load live scores', style: TextStyle(color: context.cTextPrimary, fontSize: 15)),
                   const SizedBox(height: 16),
                   TextButton(
                     onPressed: () => ref.invalidate(_liveProvider),
@@ -98,7 +98,7 @@ class _LiveBody extends StatelessWidget {
 
     return RefreshIndicator(
       color: AppColors.accentBlue,
-      backgroundColor: AppColors.bgCard,
+      backgroundColor: context.cBgCard,
       onRefresh: () async {
         // will be handled by riverpod
       },
@@ -121,21 +121,21 @@ class _LiveBody extends StatelessWidget {
             ...finished.take(10).map((m) => _ESPNMatchCard(match: m)),
           ],
           if (live.isEmpty && upcoming.isEmpty && finished.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(top: 80),
               child: Center(child: Column(children: [
-                Icon(Icons.sports_soccer, color: AppColors.textMuted, size: 64),
+                Icon(Icons.sports_soccer, color: context.cTextMuted, size: 64),
                 SizedBox(height: 16),
-                Text('No matches available', style: TextStyle(color: AppColors.textMuted, fontSize: 15)),
+                Text('No matches available', style: TextStyle(color: context.cTextMuted, fontSize: 15)),
                 SizedBox(height: 8),
-                Text('Pull down to refresh', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                Text('Pull down to refresh', style: TextStyle(color: context.cTextMuted, fontSize: 12)),
               ])),
             ),
           // League-wise breakdown
           if (matches.length > 10) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-              child: Text('ALL LEAGUES', style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+              child: Text('ALL LEAGUES', style: TextStyle(color: context.cTextMuted, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
             ),
             ...leagues.entries.map((e) => _LeagueGroup(
               slug: e.key,
@@ -170,11 +170,11 @@ class _SectionHeader extends StatelessWidget {
         ],
         Text(title, style: TextStyle(
           fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w700,
-          color: isLive ? AppColors.live : AppColors.textMuted,
+          color: isLive ? AppColors.live : context.cTextMuted,
           letterSpacing: 1.5,
         )),
         const Spacer(),
-        Text('$count', style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
+        Text('$count', style: TextStyle(color: context.cTextMuted, fontSize: 11, fontWeight: FontWeight.w600)),
       ]),
     );
   }
@@ -198,10 +198,10 @@ class _ESPNMatchCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.bgCard,
+          color: context.cBgCard,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: match.isLive ? AppColors.live.withOpacity(0.3) : AppColors.border,
+            color: match.isLive ? AppColors.live.withOpacity(0.3) : context.cBorder,
           ),
         ),
         child: Column(
@@ -217,7 +217,7 @@ class _ESPNMatchCard extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(match.leagueName,
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: context.cTextMuted, fontSize: 10, fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis),
                 ),
                 if (match.isLive)
@@ -234,9 +234,9 @@ class _ESPNMatchCard extends StatelessWidget {
                     ]),
                   )
                 else if (match.isPre)
-                  Text(match.statusDetail, style: const TextStyle(color: AppColors.textMuted, fontSize: 10))
+                  Text(match.statusDetail, style: TextStyle(color: context.cTextMuted, fontSize: 10))
                 else
-                  const Text('FT', style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                  Text('FT', style: TextStyle(color: context.cTextMuted, fontSize: 10)),
               ]),
               const SizedBox(height: 10),
             ],
@@ -255,7 +255,7 @@ class _ESPNMatchCard extends StatelessWidget {
                   style: TextStyle(
                     fontFamily: 'Oswald', fontSize: match.isPre ? 14 : 20,
                     fontWeight: FontWeight.w700,
-                    color: match.isPre ? AppColors.textMuted : AppColors.textPrimary,
+                    color: match.isPre ? context.cTextMuted : context.cTextPrimary,
                   ),
                 ),
               ),
@@ -272,7 +272,7 @@ class _ESPNMatchCard extends StatelessWidget {
               const SizedBox(height: 8),
               ...match.scorers.map((s) => Padding(
                 padding: const EdgeInsets.only(bottom: 2),
-                child: Text('⚽ ${s.name}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                child: Text('⚽ ${s.name}', style: TextStyle(color: context.cTextSecondary, fontSize: 11)),
               )),
             ],
           ],
@@ -301,9 +301,9 @@ class _TeamLogoRow extends StatelessWidget {
       children: [
         if (logo.startsWith('http'))
           CachedNetworkImage(imageUrl: logo, width: 24, height: 24,
-            errorWidget: (_, __, ___) => const Icon(Icons.sports_soccer, size: 20, color: AppColors.textMuted))
+            errorWidget: (_, __, ___) => Icon(Icons.sports_soccer, size: 20, color: context.cTextMuted))
         else
-          const Icon(Icons.sports_soccer, size: 20, color: AppColors.textMuted),
+          Icon(Icons.sports_soccer, size: 20, color: context.cTextMuted),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
@@ -311,7 +311,7 @@ class _TeamLogoRow extends StatelessWidget {
             style: TextStyle(
               fontFamily: 'Inter', fontSize: 12,
               fontWeight: isWinner ? FontWeight.w700 : FontWeight.w400,
-              color: isWinner ? AppColors.textPrimary : AppColors.textSecondary,
+              color: isWinner ? context.cTextPrimary : context.cTextSecondary,
             ),
             textAlign: isAway ? TextAlign.right : TextAlign.left,
             overflow: TextOverflow.ellipsis,
@@ -334,17 +334,17 @@ class _LeagueGroup extends StatelessWidget {
     return Column(children: [
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        color: AppColors.bgCard,
+        color: context.cBgCard,
         child: Row(children: [
           if (logo.isNotEmpty)
             CachedNetworkImage(imageUrl: logo, width: 18, height: 18,
-              errorWidget: (_, __, ___) => const Icon(Icons.sports_soccer, size: 16, color: AppColors.textMuted)),
+              errorWidget: (_, __, ___) => Icon(Icons.sports_soccer, size: 16, color: context.cTextMuted)),
           const SizedBox(width: 10),
-          Expanded(child: Text(name, style: const TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600))),
-          Text('${matches.length}', style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+          Expanded(child: Text(name, style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontWeight: FontWeight.w600))),
+          Text('${matches.length}', style: TextStyle(color: context.cTextMuted, fontSize: 11)),
         ]),
       ),
-      const Divider(height: 1, color: AppColors.border),
+      Divider(height: 1, color: context.cBorder),
     ]);
   }
 }

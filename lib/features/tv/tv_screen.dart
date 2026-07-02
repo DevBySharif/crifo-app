@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -5,7 +6,43 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import '../../core/api/tv_channels.dart';
+import '../../core/theme/colors.dart';
 import '../../core/providers/tv_fullscreen_provider.dart';
+
+// ─── Name sanitizer ───────────────────────────────────────────────────────────
+// Source data contains mojibake (UTF-8 read as Latin-1, emoji bytes, %X junk).
+// cp1252 printable chars that appear when UTF-8 bytes 0x80-0x9F get mis-decoded
+const _cp1252Rev = {
+  0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84, 0x2026: 0x85,
+  0x2020: 0x86, 0x2021: 0x87, 0x02C6: 0x88, 0x2030: 0x89, 0x0160: 0x8A,
+  0x2039: 0x8B, 0x0152: 0x8C, 0x017D: 0x8E, 0x2018: 0x91, 0x2019: 0x92,
+  0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+  0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C,
+  0x017E: 0x9E, 0x0178: 0x9F,
+};
+
+String cleanChannelName(String raw) {
+  var s = raw;
+  // Repair double-encoded UTF-8 (e.g. "Ã±" → "ñ") when mojibake markers present
+  if (s.contains('Ã') || s.contains('â') || s.contains('ï¸')) {
+    try {
+      final bytes = <int>[];
+      var ok = true;
+      for (final cu in s.runes) {
+        if (cu <= 0xFF) { bytes.add(cu); }
+        else if (_cp1252Rev.containsKey(cu)) { bytes.add(_cp1252Rev[cu]!); }
+        else { ok = false; break; }
+      }
+      if (ok) s = utf8.decode(bytes, allowMalformed: true);
+    } catch (_) {}
+  }
+  s = s
+      .replaceAll(RegExp(r'[\u{1F000}-\u{1FFFF}\u{2190}-\u{2BFF}\u{FE00}-\u{FE0F}�]', unicode: true), '') // emoji/junk
+      .replaceAll(RegExp(r'(%[0-9A-Fa-f])+'), '') // %7%4... garbage
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  return s.isEmpty ? raw.trim() : s;
+}
 
 // ─── Sorting helpers ──────────────────────────────────────────────────────────
 
@@ -142,7 +179,10 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   bool _playerLoading = false;
   bool _fullscreen = false;
 
-  List<TVChannel> _channels = List.from(tvChannels)
+  List<TVChannel> _channels = tvChannels
+      .map((c) => TVChannel(id: c.id, name: cleanChannelName(c.name),
+          category: c.category, streamUrl: c.streamUrl, logoUrl: c.logoUrl))
+      .toList()
     ..sort((a, b) => _channelSortKey(a).compareTo(_channelSortKey(b)));
   Set<String> _workingIds = {};
   bool _checking = false;
@@ -178,6 +218,14 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       _channels = sorted;
       _checking = false;
     });
+  }
+
+  // Handle play requests coming from other screens (match "Where to watch")
+  void _handlePlayRequest(String? channelId) {
+    if (channelId == null) return;
+    ref.read(tvPlayRequestProvider.notifier).state = null;
+    final ch = _channels.where((c) => c.id == channelId).toList();
+    if (ch.isNotEmpty) _play(ch.first);
   }
 
   List<TVChannel> get _filtered => _channels.where((c) {
@@ -283,6 +331,12 @@ class _TVScreenState extends ConsumerState<TVScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Play request from match detail "Where to watch"
+    ref.listen(tvPlayRequestProvider, (prev, next) => _handlePlayRequest(next));
+    final pending = ref.read(tvPlayRequestProvider);
+    if (pending != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _handlePlayRequest(pending));
+    }
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (_, __) {
@@ -290,7 +344,7 @@ class _TVScreenState extends ConsumerState<TVScreen> {
         if (_playing != null) _closePlayer();
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF0A0A0F),
+        backgroundColor: context.cBg,
         body: SafeArea(
           child: Column(
             children: [
@@ -326,8 +380,8 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
       child: Row(
         children: [
-          const Text('LIVE TV', style: TextStyle(
-            color: Color(0xFFF0F0FF), fontSize: 16,
+          Text('LIVE TV', style: TextStyle(
+            color: context.cTextPrimary, fontSize: 16,
             fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: 1,
           )),
           const SizedBox(width: 6),
@@ -351,20 +405,20 @@ class _TVScreenState extends ConsumerState<TVScreen> {
             child: TextField(
               controller: _searchCtrl,
               onChanged: (v) => setState(() => _query = v),
-              style: const TextStyle(color: Color(0xFFF0F0FF), fontSize: 12, fontFamily: 'Inter'),
+              style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontFamily: 'Inter'),
               decoration: InputDecoration(
                 hintText: 'Search channels...',
-                hintStyle: const TextStyle(color: Color(0xFF8888AA), fontSize: 12),
-                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF8888AA), size: 18),
+                hintStyle: TextStyle(color: context.cTextMuted, fontSize: 12),
+                prefixIcon: Icon(Icons.search_rounded, color: context.cTextMuted, size: 18),
                 prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 filled: true,
-                fillColor: const Color(0xFF16161F),
+                fillColor: context.cBgInput,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFF1E1E2E))),
+                    borderSide: BorderSide(color: context.cBorder)),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFF1E1E2E))),
+                    borderSide: BorderSide(color: context.cBorder)),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
                     borderSide: const BorderSide(color: Color(0xFF00B4FF), width: 1.2)),
               ),
@@ -398,14 +452,14 @@ class _TVScreenState extends ConsumerState<TVScreen> {
               margin: const EdgeInsets.only(right: 6),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: active ? const Color(0xFF00B4FF) : const Color(0xFF13131A),
+                color: active ? const Color(0xFF00B4FF) : context.cBgCard,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: active ? const Color(0xFF00B4FF) : const Color(0xFF1E1E2E),
+                  color: active ? const Color(0xFF00B4FF) : context.cBorder,
                 ),
               ),
               child: Text(item.$2, style: TextStyle(
-                color: active ? Colors.white : const Color(0xFF8888AA),
+                color: active ? Colors.white : context.cTextSecondary,
                 fontSize: 10, fontWeight: FontWeight.w700,
                 fontFamily: 'Inter', letterSpacing: 0.5,
               )),
@@ -419,8 +473,8 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   Widget _buildGrid() {
     final channels = _filtered;
     if (channels.isEmpty) {
-      return const Center(child: Text('No channels',
-          style: TextStyle(color: Color(0xFF8888AA), fontFamily: 'Inter')));
+      return Center(child: Text('No channels',
+          style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter')));
     }
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
@@ -440,14 +494,14 @@ class _TVScreenState extends ConsumerState<TVScreen> {
             decoration: BoxDecoration(
               color: isActive
                   ? const Color(0xFF00B4FF).withValues(alpha: 0.12)
-                  : const Color(0xFF13131A),
+                  : context.cBgCard,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isActive
                     ? const Color(0xFF00B4FF)
                     : isWorking
                         ? const Color(0xFF22C55E).withValues(alpha: 0.4)
-                        : const Color(0xFF1E1E2E),
+                        : context.cBorder,
                 width: isActive ? 1.5 : 1,
               ),
             ),
@@ -465,7 +519,7 @@ class _TVScreenState extends ConsumerState<TVScreen> {
                     textAlign: TextAlign.center, maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: isActive ? const Color(0xFF00B4FF) : const Color(0xFFDDDDFF),
+                      color: isActive ? const Color(0xFF00B4FF) : context.cTextPrimary,
                       fontSize: 9, fontWeight: FontWeight.w600, fontFamily: 'Inter',
                     )),
                 ),
@@ -686,7 +740,7 @@ class _ChannelLogo extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        color: const Color(0xFF1A1A28),
+        color: context.cBgElevated,
         child: logoUrl.isNotEmpty
             ? Image.network(logoUrl, fit: BoxFit.contain,
                 width: double.infinity, height: double.infinity,

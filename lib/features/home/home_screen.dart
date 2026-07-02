@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/api/fotmob_client.dart';
 import '../../core/api/espn_client.dart';
 import '../../core/theme/colors.dart';
+import '../../core/theme/theme_provider.dart';
 import '../match_detail/match_detail_screen.dart';
 
 // ── Providers ──────────────────────────────────────────────────────────────────
@@ -89,6 +90,22 @@ class HomeScreen extends ConsumerWidget {
                     const Spacer(),
                     // Live indicator chip
                     _LiveChip(),
+                    const SizedBox(width: 10),
+                    // Dark / light mode toggle
+                    GestureDetector(
+                      onTap: () => ref.read(themeModeProvider.notifier).toggle(),
+                      child: Container(
+                        width: 36, height: 36,
+                        decoration: BoxDecoration(
+                          color: context.cBgElevated,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: context.cBorder),
+                        ),
+                        child: Icon(
+                          context.isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                          color: context.cTextSecondary, size: 20),
+                      ),
+                    ),
                     const SizedBox(width: 10),
                     // Notification bell
                     Container(
@@ -197,7 +214,7 @@ class _PremiumLoader extends StatelessWidget {
         ),
       ),
       const SizedBox(height: 12),
-      const Text('Loading matches...', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontFamily: 'Inter')),
+      Text('Loading matches...', style: TextStyle(color: context.cTextMuted, fontSize: 12, fontFamily: 'Inter')),
     ]);
   }
 }
@@ -212,16 +229,16 @@ class _ErrorState extends StatelessWidget {
       Container(
         width: 64, height: 64,
         decoration: BoxDecoration(
-          color: AppColors.bgElevated,
+          color: context.cBgElevated,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.cBorder),
         ),
-        child: const Icon(Icons.wifi_off_rounded, color: AppColors.textMuted, size: 30),
+        child: Icon(Icons.wifi_off_rounded, color: context.cTextMuted, size: 30),
       ),
       const SizedBox(height: 16),
-      const Text('Connection failed', style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+      Text('Connection failed', style: TextStyle(color: context.cTextPrimary, fontSize: 16, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
       const SizedBox(height: 6),
-      const Text('Check your internet connection', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontFamily: 'Inter')),
+      Text('Check your internet connection', style: TextStyle(color: context.cTextMuted, fontSize: 12, fontFamily: 'Inter')),
       const SizedBox(height: 20),
       GestureDetector(
         onTap: onRetry,
@@ -286,12 +303,12 @@ class _MatchBody extends ConsumerWidget {
       const _TransfersSection(),
 
       if (live.isEmpty && upcoming.isEmpty && finished.isEmpty)
-        const Padding(
+        Padding(
           padding: EdgeInsets.symmetric(vertical: 60),
           child: Column(children: [
-            Icon(Icons.sports_soccer_outlined, color: AppColors.textMuted, size: 48),
+            Icon(Icons.sports_soccer_outlined, color: context.cTextMuted, size: 48),
             SizedBox(height: 12),
-            Text('No matches today', style: TextStyle(color: AppColors.textMuted, fontSize: 14, fontFamily: 'Inter')),
+            Text('No matches today', style: TextStyle(color: context.cTextMuted, fontSize: 14, fontFamily: 'Inter')),
           ]),
         ),
 
@@ -384,7 +401,7 @@ class _NewsBannerState extends ConsumerState<_NewsBanner> {
                       height: 4,
                       decoration: BoxDecoration(
                         gradient: i == _index ? AppColors.primaryGradient : null,
-                        color: i == _index ? null : AppColors.textMuted.withValues(alpha: 0.5),
+                        color: i == _index ? null : context.cTextMuted.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -397,7 +414,7 @@ class _NewsBannerState extends ConsumerState<_NewsBanner> {
       loading: () => Container(
         height: 220,
         margin: const EdgeInsets.only(bottom: 2),
-        color: AppColors.bgCard,
+        color: context.cBgCard,
         child: const Center(child: _PremiumLoader()),
       ),
       error: (_, __) => const SizedBox.shrink(),
@@ -421,8 +438,8 @@ class _NewsSlide extends StatelessWidget {
           imageUrl: _s(article['imageUrl']),
           width: double.infinity, height: 220,
           fit: BoxFit.cover,
-          errorWidget: (_, __, ___) => Container(height: 220, color: AppColors.bgCard,
-            child: const Icon(Icons.image_not_supported_outlined, color: AppColors.textMuted, size: 40)),
+          errorWidget: (_, __, ___) => Container(height: 220, color: context.cBgCard,
+            child: Icon(Icons.image_not_supported_outlined, color: context.cTextMuted, size: 40)),
         ),
         // Deep gradient overlay
         Positioned.fill(
@@ -483,25 +500,25 @@ class _SectionHdr extends StatelessWidget {
         const SizedBox(width: 8),
         Text(title, style: TextStyle(
           fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w800,
-          color: isLive ? AppColors.live : AppColors.textSecondary, letterSpacing: 1.8,
+          color: isLive ? AppColors.live : context.cTextSecondary, letterSpacing: 1.8,
         )),
         if (count > 0) ...[
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
             decoration: BoxDecoration(
-              color: isLive ? AppColors.live.withValues(alpha: 0.12) : AppColors.bgElevated,
+              color: isLive ? AppColors.live.withValues(alpha: 0.12) : context.cBgElevated,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text('$count', style: TextStyle(
               fontSize: 10, fontWeight: FontWeight.w700, fontFamily: 'Inter',
-              color: isLive ? AppColors.live : AppColors.textMuted,
+              color: isLive ? AppColors.live : context.cTextMuted,
             )),
           ),
         ],
         const Spacer(),
         if (!isLive)
-          const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 16),
+          Icon(Icons.chevron_right, color: context.cTextMuted, size: 16),
       ]),
     );
   }
@@ -530,7 +547,7 @@ class _LiveCard extends StatelessWidget {
         margin: const EdgeInsets.only(right: 12),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          gradient: AppColors.cardGradient,
+          gradient: context.cCardGradient,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.live.withValues(alpha: 0.3), width: 1),
           boxShadow: [
@@ -552,8 +569,8 @@ class _LiveCard extends StatelessWidget {
           Row(children: [
             _MiniTeam(team: home),
             Expanded(child: Center(child: Text(score.isNotEmpty ? score : '- -',
-              style: const TextStyle(fontFamily: 'Oswald', fontSize: 22,
-                  fontWeight: FontWeight.w700, color: AppColors.textPrimary)))),
+              style: TextStyle(fontFamily: 'Oswald', fontSize: 22,
+                  fontWeight: FontWeight.w700, color: context.cTextPrimary)))),
             _MiniTeam(team: away, align: TextAlign.right),
           ]),
         ]),
@@ -577,12 +594,12 @@ class _MiniTeam extends StatelessWidget {
         if (id != null)
           CachedNetworkImage(imageUrl: FotmobClient.teamLogoUrl(id), width: 30, height: 30,
             errorWidget: (_, __, ___) => Container(width: 30, height: 30,
-              decoration: BoxDecoration(color: AppColors.bgElevated, borderRadius: BorderRadius.circular(6))))
+              decoration: BoxDecoration(color: context.cBgElevated, borderRadius: BorderRadius.circular(6))))
         else
           Container(width: 30, height: 30,
-            decoration: BoxDecoration(color: AppColors.bgElevated, borderRadius: BorderRadius.circular(6))),
+            decoration: BoxDecoration(color: context.cBgElevated, borderRadius: BorderRadius.circular(6))),
         const SizedBox(height: 5),
-        Text(name, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10,
+        Text(name, style: TextStyle(color: context.cTextSecondary, fontSize: 10,
             fontWeight: FontWeight.w500, fontFamily: 'Inter'),
             textAlign: align, maxLines: 1, overflow: TextOverflow.ellipsis),
       ]),
@@ -619,7 +636,7 @@ class _MatchRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.6), width: 0.5)),
+          border: Border(bottom: BorderSide(color: context.cBorder.withValues(alpha: 0.6), width: 0.5)),
         ),
         child: Row(children: [
           // Time / status column
@@ -640,7 +657,7 @@ class _MatchRow extends StatelessWidget {
               ] else
                 Text(finished ? 'FT' : _formatTime(status['utcTime']),
                   style: TextStyle(fontSize: 11, fontFamily: 'Inter',
-                    color: finished ? AppColors.textMuted : AppColors.textSecondary,
+                    color: finished ? context.cTextMuted : context.cTextSecondary,
                     fontWeight: finished ? FontWeight.w400 : FontWeight.w600),
                   textAlign: TextAlign.center),
             ]),
@@ -652,7 +669,7 @@ class _MatchRow extends StatelessWidget {
             _TeamLine(team: away, score: parts.length > 1 ? parts.last.trim() : '', isWinner: awayWin),
           ])),
           // Chevron
-          const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 16),
+          Icon(Icons.chevron_right, color: context.cTextMuted, size: 16),
         ]),
       ),
     );
@@ -687,7 +704,7 @@ class _TeamLine extends StatelessWidget {
       Expanded(child: Text(name,
         style: TextStyle(fontFamily: 'Inter', fontSize: 13,
           fontWeight: isWinner ? FontWeight.w700 : FontWeight.w400,
-          color: isWinner ? AppColors.textPrimary : AppColors.textSecondary),
+          color: isWinner ? context.cTextPrimary : context.cTextSecondary),
         overflow: TextOverflow.ellipsis)),
       if (score.isNotEmpty)
         Container(
@@ -698,7 +715,7 @@ class _TeamLine extends StatelessWidget {
           ) : null,
           child: Text(score, style: TextStyle(fontFamily: 'Oswald', fontSize: 15,
             fontWeight: isWinner ? FontWeight.w700 : FontWeight.w400,
-            color: isWinner ? AppColors.accentPrimary : AppColors.textMuted)),
+            color: isWinner ? AppColors.accentPrimary : context.cTextMuted)),
         ),
     ]);
   }
@@ -734,22 +751,22 @@ class _TransfersSection extends ConsumerWidget {
                   margin: const EdgeInsets.only(right: 10),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.bgCard,
+                    color: context.cBgCard,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: context.cBorder),
                   ),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(player, style: const TextStyle(color: AppColors.textPrimary,
+                    Text(player, style: TextStyle(color: context.cTextPrimary,
                         fontSize: 12, fontWeight: FontWeight.w700, fontFamily: 'Inter'),
                         maxLines: 1, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 6),
                     Row(children: [
-                      Expanded(child: Text(from, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10),
+                      Expanded(child: Text(from, style: TextStyle(color: context.cTextSecondary, fontSize: 10),
                           maxLines: 1, overflow: TextOverflow.ellipsis)),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 4),
                         child: Icon(Icons.arrow_forward_rounded, size: 12, color: AppColors.accentPrimary)),
-                      Expanded(child: Text(to, style: const TextStyle(color: AppColors.textSecondary, fontSize: 10),
+                      Expanded(child: Text(to, style: TextStyle(color: context.cTextSecondary, fontSize: 10),
                           maxLines: 1, overflow: TextOverflow.ellipsis)),
                     ]),
                     const Spacer(),
