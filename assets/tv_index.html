@@ -3769,7 +3769,7 @@ video::-webkit-media-controls-fullscreen-button {
             </div>
             <!-- Bottom Footer -->
             <div class="stats-footer">
-              <span>FOOTBALL EON</span>
+              <span>CRIFO</span>
               <span>FIFA WORLD CUP 2026</span>
             </div>
           </div>
@@ -4208,7 +4208,7 @@ function dlPoster(){
     var h=Math.round(1080*el.offsetHeight/el.offsetWidth);
     out.width=1080; out.height=h;
     out.getContext('2d').drawImage(canvas,0,0,1080,h);
-    var filename = 'FootballEon_'+currentTab+'_'+cA.value+'_vs_'+cB.value+'.png';
+    var filename = 'CriFO_'+currentTab+'_'+cA.value+'_vs_'+cB.value+'.png';
     var base64Data = out.toDataURL('image/png');
     if (window.AndroidBridge) {
       window.AndroidBridge.saveImage(base64Data, filename);
@@ -4609,7 +4609,7 @@ function dlCard(){
   btn.textContent='⏳ Generating...'; btn.disabled=true;
   var el=document.getElementById('card');
   html2canvas(el,{width:el.offsetWidth,height:el.offsetHeight,scale:1080/el.offsetWidth,backgroundColor:null,useCORS:true,allowTaint:true}).then(function(canvas){
-    var filename = 'FootballEon_'+currentTab+'_'+Date.now()+'.png';
+    var filename = 'CriFO_'+currentTab+'_'+Date.now()+'.png';
     var base64Data = canvas.toDataURL('image/png');
     if (window.AndroidBridge) {
       window.AndroidBridge.saveImage(base64Data, filename);
@@ -7377,20 +7377,20 @@ function closeCricketMatch() {
 }
 
 function shareApp(){
-  var pkg='com.footballeon.scorecardstudio';
+  var pkg='com.crifo.crifo';
   var url='https://play.google.com/store/apps/details?id='+pkg;
-  if(navigator.share){navigator.share({title:'Football Eon',text:'Check out Football Eon!',url:url});}
+  if(navigator.share){navigator.share({title:'CriFO',text:'Check out CriFO!',url:url});}
   else{try{AndroidBridge.openBrowser(url);}catch(e){prompt('Copy:',url);}}
 }
 function rateApp(){
-  var pkg='com.footballeon.scorecardstudio';
+  var pkg='com.crifo.crifo';
   try{AndroidBridge.openBrowser('https://play.google.com/store/apps/details?id='+pkg);}catch(e){window.open('https://play.google.com/store/apps/details?id='+pkg,'_blank');}
 }
 function openPrivacy(){
-  try{AndroidBridge.openBrowser('https://footballeon.app/privacy');}catch(e){window.open('https://footballeon.app/privacy','_blank');}
+  try{AndroidBridge.openBrowser('https://crifo.netlify.app/privacy');}catch(e){window.open('https://crifo.netlify.app/privacy','_blank');}
 }
 function openWebsite(){
-  try{AndroidBridge.openBrowser('https://footballeon.netlify.app');}catch(e){window.open('https://footballeon.netlify.app','_blank');}
+  try{AndroidBridge.openBrowser('https://crifo.netlify.app');}catch(e){window.open('https://crifo.netlify.app','_blank');}
 }
 (function(){try{var k=typeof AndroidBridge!=='undefined'?AndroidBridge.getFirebaseApiKey():'';fetch('https://firestore.googleapis.com/v1/projects/footballeonofficial/databases/(default)/documents/visits?key='+k,{method:'POST',body:JSON.stringify({fields:{type:{stringValue:'pageview'},source:{stringValue:'app_studio'},page:{stringValue:'home'},timestamp:{timestampValue:new Date().toISOString()},date:{stringValue:new Date(Date.now()+6*3600000).toISOString().split('T')[0]},hour:{integerValue:new Date(Date.now()+6*3600000).getUTCHours()},ua:{stringValue:(navigator.userAgent||'').slice(0,120)},ref:{stringValue:document.referrer||''}}}),headers:{'Content-Type':'application/json'}}).catch(function(){})}catch(e){}})();
 </script>
@@ -7404,7 +7404,7 @@ function openWebsite(){
         <div class="home-avatar">⚽</div>
         <div>
           <div class="home-greeting">Football Fan</div>
-          <div class="home-subtitle">Football Eon User</div>
+          <div class="home-subtitle">CriFO User</div>
         </div>
       </div>
       <button class="home-header-btn" onclick="if(window.AndroidBridge&&window.AndroidBridge.fixApp){window.AndroidBridge.fixApp();}else{location.reload(true);}">FIX</button>
@@ -7507,7 +7507,7 @@ function openWebsite(){
           <span class="setting-icon">📤</span>
           <div style="flex:1;">
             <div class="setting-label">Share App</div>
-            <div class="setting-desc">Share Football Eon with friends</div>
+            <div class="setting-desc">Share CriFO with friends</div>
           </div>
           <span class="setting-arrow">›</span>
         </div>
@@ -7531,7 +7531,7 @@ function openWebsite(){
           <span class="setting-icon">🌐</span>
           <div style="flex:1;">
             <div class="setting-label">Visit Website</div>
-            <div class="setting-desc">footballeon.netlify.app</div>
+            <div class="setting-desc">crifo.netlify.app</div>
           </div>
           <span class="setting-arrow">›</span>
         </div>
@@ -7539,14 +7539,14 @@ function openWebsite(){
           <span class="setting-icon">ℹ️</span>
           <div style="flex:1;">
             <div class="setting-label">App Version</div>
-            <div class="setting-desc">Football Eon v1.0.0</div>
+            <div class="setting-desc">CriFO v1.0.0</div>
           </div>
           <span style="font-size:10px;color:#71717a;">Studio</span>
         </div>
       </div>
       <div style="padding: 16px 16px 8px; text-align: center;">
         <div class="disclaimer-text">
-          Football Eon uses publicly available data from ESPN API. This app is not affiliated with, endorsed by, or sponsored by ESPN or any sports league. All trademarks, logos, and data are the property of their respective owners. Football Eon does not guarantee the accuracy, completeness, or timeliness of any data displayed. Use at your own discretion.
+          CriFO uses publicly available data from ESPN API. This app is not affiliated with, endorsed by, or sponsored by ESPN or any sports league. All trademarks, logos, and data are the property of their respective owners. Football Eon does not guarantee the accuracy, completeness, or timeliness of any data displayed. Use at your own discretion.
         </div>
       </div>
     </div>

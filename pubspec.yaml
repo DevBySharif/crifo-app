@@ -13,6 +13,8 @@ dependencies:
   # Navigation
   go_router: ^14.6.2
 
+  # Firebase
+
   # HTTP & API
   dio: ^5.7.0
   retrofit: ^4.4.1
@@ -41,6 +43,9 @@ dependencies:
   # Utils
   intl: ^0.20.2
   url_launcher: ^6.3.1
+  firebase_core: ^4.11.0
+  firebase_analytics: ^12.4.3
+  cloud_firestore: ^6.6.0
 
 dev_dependencies:
   flutter_test:
