@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/api/fotmob_client.dart';
@@ -135,7 +135,7 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       boxShadow: [
-                        BoxShadow(color: AppColors.accentBlue.withOpacity(0.3), blurRadius: 20, spreadRadius: 2),
+                        BoxShadow(color: AppColors.accentBlue.withValues(alpha: 0.3), blurRadius: 20, spreadRadius: 2),
                       ],
                     ),
                     child: ClipOval(
@@ -154,9 +154,9 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [AppColors.accentBlue.withOpacity(0.2), AppColors.accentPurple.withOpacity(0.15)]),
+                      gradient: LinearGradient(colors: [AppColors.accentBlue.withValues(alpha: 0.2), AppColors.accentPurple.withValues(alpha: 0.15)]),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.accentBlue.withOpacity(0.3)),
+                      border: Border.all(color: AppColors.accentBlue.withValues(alpha: 0.3)),
                     ),
                     child: Text(position.toUpperCase(), style: const TextStyle(color: AppColors.accentBlue, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
                   ),
@@ -168,7 +168,7 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
                         onTap: () { if (clubId.isNotEmpty) Navigator.push(context, MaterialPageRoute(builder: (_) => TeamScreen(teamId: clubId, teamName: club))); },
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12)),
+                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12)),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             const Icon(Icons.shield_outlined, size: 12, color: Color(0xFFB0B0C8)),
                             const SizedBox(width: 4),
@@ -180,7 +180,7 @@ class _PlayerBodyState extends State<_PlayerBody> with SingleTickerProviderState
                     if (country.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12)),
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(12)),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           const Icon(Icons.public, size: 12, color: Color(0xFFB0B0C8)),
                           const SizedBox(width: 4),
@@ -240,9 +240,9 @@ class _GlassCard extends StatelessWidget {
     padding: padding ?? const EdgeInsets.all(12),
     height: height,
     decoration: BoxDecoration(
-      color: context.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
+      color: context.isDark ? Colors.white.withValues(alpha: 0.04) : Colors.white,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: context.isDark ? Colors.white.withOpacity(0.06) : AppColors.borderLightMode),
+      border: Border.all(color: context.isDark ? Colors.white.withValues(alpha: 0.06) : AppColors.borderLightMode),
     ),
     child: child,
   );
@@ -363,7 +363,7 @@ class _MatchesSection extends StatelessWidget {
                     width: 32, height: 32,
                     decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(
                       begin: Alignment.topLeft, end: Alignment.bottomRight,
-                      colors: [resultColor, resultColor.withOpacity(0.7)])),
+                      colors: [resultColor, resultColor.withValues(alpha: 0.7)])),
                     child: Center(child: Text(result, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800))),
                   ),
                 if (resultColor != null) SizedBox(width: 10),
@@ -383,7 +383,7 @@ class _MatchesSection extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: AppColors.accentOrange.withOpacity(0.15),
+                        color: AppColors.accentOrange.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text('SUB', style: TextStyle(color: AppColors.accentOrange, fontSize: 9, fontWeight: FontWeight.w700)),
@@ -401,7 +401,7 @@ class _MatchesSection extends StatelessWidget {
                     Container(
                       width: 28, height: 28,
                       decoration: BoxDecoration(
-                        color: AppColors.accentGreen.withOpacity(0.12),
+                        color: AppColors.accentGreen.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(child: Text(goals, style: const TextStyle(color: AppColors.accentGreen, fontSize: 12, fontWeight: FontWeight.w800))),
@@ -411,7 +411,7 @@ class _MatchesSection extends StatelessWidget {
                     Container(
                       width: 28, height: 28,
                       decoration: BoxDecoration(
-                        color: AppColors.accentBlue.withOpacity(0.12),
+                        color: AppColors.accentBlue.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(child: Text('${assists}A', style: const TextStyle(color: AppColors.accentBlue, fontSize: 11, fontWeight: FontWeight.w800))),
@@ -422,7 +422,7 @@ class _MatchesSection extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                       decoration: BoxDecoration(
-                        color: rating >= 7 ? AppColors.accentGreen.withOpacity(0.12) : context.cBgElevated,
+                        color: rating >= 7 ? AppColors.accentGreen.withValues(alpha: 0.12) : context.cBgElevated,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(rating.toStringAsFixed(1), style: TextStyle(
@@ -494,7 +494,7 @@ class _CareerSection extends StatelessWidget {
                     if (transferType.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                        decoration: BoxDecoration(color: AppColors.accentPurple.withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
+                        decoration: BoxDecoration(color: AppColors.accentPurple.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
                         child: Text(transferType, style: const TextStyle(color: AppColors.accentPurple, fontSize: 8, fontWeight: FontWeight.w600)),
                       ),
                   ]),
@@ -510,13 +510,13 @@ class _CareerSection extends StatelessWidget {
                       if (goals.isNotEmpty && goals != '0')
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: AppColors.accentGreen.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                          decoration: BoxDecoration(color: AppColors.accentGreen.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
                           child: Text('$goals gls', style: const TextStyle(color: AppColors.accentGreen, fontSize: 9, fontWeight: FontWeight.w700)),
                         ),
                       if (assists.isNotEmpty && assists != '0')
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: AppColors.accentBlue.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                          decoration: BoxDecoration(color: AppColors.accentBlue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
                           child: Text('$assists ast', style: const TextStyle(color: AppColors.accentBlue, fontSize: 9, fontWeight: FontWeight.w700)),
                         ),
                     ]),
@@ -573,7 +573,7 @@ class _TrophyCard extends StatelessWidget {
         Container(
           width: 40, height: 40,
           decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [AppColors.accentGold.withOpacity(0.2), AppColors.accentOrange.withOpacity(0.1)]),
+            gradient: LinearGradient(colors: [AppColors.accentGold.withValues(alpha: 0.2), AppColors.accentOrange.withValues(alpha: 0.1)]),
             borderRadius: BorderRadius.circular(10),
           ),
           child: const Icon(Icons.emoji_events, color: AppColors.accentGold, size: 22),
@@ -590,9 +590,9 @@ class _TrophyCard extends StatelessWidget {
               margin: const EdgeInsets.only(left: 8),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: AppColors.accentGold.withOpacity(0.1),
+                color: AppColors.accentGold.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.accentGold.withOpacity(0.2)),
+                border: Border.all(color: AppColors.accentGold.withValues(alpha: 0.2)),
               ),
               child: Text(seasons.join(', '), style: const TextStyle(color: AppColors.accentGold, fontSize: 10, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),

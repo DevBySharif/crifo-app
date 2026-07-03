@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -201,7 +201,7 @@ class _ESPNMatchCard extends StatelessWidget {
           color: context.cBgCard,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: match.isLive ? AppColors.live.withOpacity(0.3) : context.cBorder,
+            color: match.isLive ? AppColors.live.withValues(alpha: 0.3) : context.cBorder,
           ),
         ),
         child: Column(
@@ -224,7 +224,7 @@ class _ESPNMatchCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: AppColors.live.withOpacity(0.15),
+                      color: AppColors.live.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [

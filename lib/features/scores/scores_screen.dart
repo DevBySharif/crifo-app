@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/api/fotmob_client.dart';
@@ -336,15 +337,19 @@ class _LeagueBlockState extends State<_LeagueBlock> {
     final name = _s(widget.league['name']);
     final id = widget.league['primaryId'] ?? widget.league['parentLeagueId'] ?? widget.league['id'];
     final flagUrl = id != null
-        ? 'https://images.fotmob.com/image_resources/logo/leaguelogo/${id}_small.png'
+        ? FotmobClient.leagueLogoUrl(id)
         : null;
 
     return Column(children: [
       // League header — tap to expand/collapse, long press to open league screen
       GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onLongPress: () {
-          if (id != null) Navigator.push(context, MaterialPageRoute(
-            builder: (_) => LeagueScreen(leagueId: _s(id), leagueName: name, existingMatches: _l(widget.league['matches']))));
+          if (id != null) {
+            HapticFeedback.mediumImpact();
+            Navigator.push(context, MaterialPageRoute(
+              builder: (_) => LeagueScreen(leagueId: _s(id), leagueName: name, existingMatches: _l(widget.league['matches']))));
+          }
         },
         onTap: () => setState(() => _expanded = !_expanded),
         child: Container(
@@ -428,7 +433,7 @@ class _MatchItem extends StatelessWidget {
     // liveTime can be a map {short, long} or a string directly
     final liveTime = status['liveTime'];
     final minute = liveTime is Map
-        ? _s((liveTime is Map<String,dynamic> ? liveTime : Map<String,dynamic>.from(liveTime as Map))['short'])
+        ? _s((liveTime is Map<String,dynamic> ? liveTime : Map<String,dynamic>.from(liveTime))['short'])
         : _s(liveTime);
     final parts    = score.split('-');
     final hG       = parts.isNotEmpty ? int.tryParse(parts.first.trim()) ?? -1 : -1;

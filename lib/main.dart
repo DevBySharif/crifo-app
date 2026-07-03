@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_jailbreak_detection/flutter_jailbreak_detection.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/colors.dart';
 import 'core/theme/theme_provider.dart';
@@ -25,6 +26,14 @@ void main() async {
   runApp(const ProviderScope(child: CriFOApp()));
 }
 
+final jailbreakProvider = FutureProvider<bool>((ref) async {
+  try {
+    return await FlutterJailbreakDetection.jailbroken;
+  } catch (_) {
+    return false;
+  }
+});
+
 class CriFOApp extends ConsumerWidget {
   const CriFOApp({super.key});
 
@@ -32,6 +41,7 @@ class CriFOApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final isDark = themeMode == ThemeMode.dark;
+    final jailbreak = ref.watch(jailbreakProvider);
 
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -48,7 +58,17 @@ class CriFOApp extends ConsumerWidget {
       themeMode: themeMode,
       themeAnimationDuration: const Duration(milliseconds: 350),
       themeAnimationCurve: Curves.easeOutCubic,
-      home: const MainShell(),
+      home: jailbreak.when(
+        data: (isJailbroken) {
+          if (isJailbroken) return const SecurityBlockScreen();
+          return const MainShell();
+        },
+        loading: () => const Scaffold(
+          backgroundColor: AppColors.bg,
+          body: Center(child: CircularProgressIndicator(color: AppColors.accentPrimary)),
+        ),
+        error: (_, __) => const MainShell(),
+      ),
     );
   }
 }
@@ -114,8 +134,14 @@ class _MainShellState extends ConsumerState<MainShell> {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              final uri = Uri.tryParse(u.apkUrl);
-              if (uri != null) {
+              // Security: only launch https:// APK download links.
+              // A compromised version.json cannot redirect to dangerous schemes
+              // (intent:, javascript:, file:, content:, etc.).
+              final rawUrl = u.apkUrl.trim();
+              final uri = Uri.tryParse(rawUrl);
+              if (uri != null &&
+                  uri.scheme == 'https' &&
+                  uri.host.isNotEmpty) {
                 try { await launchUrl(uri, mode: LaunchMode.externalApplication); } catch (_) {}
               }
             },
@@ -274,4 +300,89 @@ class _NavItem {
   final IconData icon;
   final IconData activeIcon;
   const _NavItem({required this.label, required this.icon, required this.activeIcon});
+}
+
+class SecurityBlockScreen extends StatelessWidget {
+  const SecurityBlockScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF06060E),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3), width: 2),
+                ),
+                child: const Icon(
+                  Icons.security_rounded,
+                  color: Color(0xFFEF4444),
+                  size: 48,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Security Violation',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Inter',
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'This device appears to be rooted or jailbroken. For security and proxy integrity reasons, CriFO cannot run on modified operating systems.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: const Color(0xFF7A7A9A),
+                  fontSize: 13,
+                  fontFamily: 'Inter',
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 32),
+              GestureDetector(
+                onTap: () => SystemNavigator.pop(),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
+                  ),
+                  child: const Text(
+                    'Exit Application',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

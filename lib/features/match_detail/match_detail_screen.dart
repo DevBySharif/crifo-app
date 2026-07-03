@@ -73,9 +73,9 @@ class _GlassCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: padding ?? const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: context.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
+      color: context.isDark ? Colors.white.withValues(alpha: 0.04) : Colors.white,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: context.isDark ? Colors.white.withOpacity(0.06) : AppColors.borderLightMode),
+      border: Border.all(color: context.isDark ? Colors.white.withValues(alpha: 0.06) : AppColors.borderLightMode),
     ),
     child: child,
   );
@@ -280,7 +280,7 @@ class _MatchHeader extends StatelessWidget {
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(score, style: TextStyle(fontFamily: 'Oswald', fontSize: 38, fontWeight: FontWeight.w800, color: const Color(0xFFF0F0FF),
-                shadows: [Shadow(blurRadius: 10, color: Colors.black.withOpacity(0.3))])),
+                shadows: [Shadow(blurRadius: 10, color: Colors.black.withValues(alpha: 0.3))])),
             ),
           ]),
         ),
@@ -315,7 +315,7 @@ class _TeamBlock extends StatelessWidget {
             width: 52, height: 52,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Colors.white.withOpacity(0.05), blurRadius: 15, spreadRadius: 2)],
+              boxShadow: [BoxShadow(color: Colors.white.withValues(alpha: 0.05), blurRadius: 15, spreadRadius: 2)],
             ),
             child: ClipOval(
               child: id != null
@@ -349,7 +349,7 @@ class _InfoLine extends StatelessWidget {
       Container(
         width: 32, height: 32,
         decoration: BoxDecoration(
-          color: AppColors.accentBlue.withOpacity(0.08),
+          color: AppColors.accentBlue.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, size: 14, color: AppColors.accentBlue),
@@ -522,12 +522,12 @@ class _TvChip extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: playable != null
-              ? AppColors.accentPrimary.withOpacity(0.12)
-              : Colors.white.withOpacity(0.06),
+              ? AppColors.accentPrimary.withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: playable != null
-              ? AppColors.accentPrimary.withOpacity(0.45)
-              : (context.isDark ? Colors.white.withOpacity(0.06) : AppColors.borderLightMode)),
+              ? AppColors.accentPrimary.withValues(alpha: 0.45)
+              : (context.isDark ? Colors.white.withValues(alpha: 0.06) : AppColors.borderLightMode)),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (playable != null) ...[
@@ -556,11 +556,11 @@ class _TvChip extends ConsumerWidget {
 class _FormRow extends StatelessWidget {
   final String label;
   final List form;
-  _FormRow({required this.label, required this.form});
+  const _FormRow({required this.label, required this.form});
   static const _colors = {'W': AppColors.accentGreen, 'D': AppColors.accentOrange, 'L': AppColors.accentRed};
   @override
   Widget build(BuildContext context) {
-    if (form.isEmpty) return SizedBox();
+    if (form.isEmpty) return const SizedBox();
     return Row(children: [
       SizedBox(width: 100, child: Text(label, style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
       const Spacer(),
@@ -572,7 +572,7 @@ class _FormRow extends StatelessWidget {
           margin: const EdgeInsets.only(left: 6),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c, c.withOpacity(0.7)]),
+            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c, c.withValues(alpha: 0.7)]),
           ),
           child: Center(child: Text(r, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800))),
         );
@@ -814,7 +814,7 @@ class _StatsTab extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
+              color: Colors.white.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text('STATS', style: TextStyle(color: context.cTextMuted, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1)),
@@ -830,7 +830,7 @@ class _StatsTab extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: context.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
+                    color: context.isDark ? Colors.white.withValues(alpha: 0.04) : Colors.white,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(_s(_m(groups[gi])['title']).toUpperCase(),
@@ -894,7 +894,7 @@ class _StatRow extends StatelessWidget {
               child: Container(
                 height: 6,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [AppColors.accentBlue, AppColors.accentBlue.withOpacity(0.7)]),
+                  gradient: LinearGradient(colors: [AppColors.accentBlue, AppColors.accentBlue.withValues(alpha: 0.7)]),
                 ),
               ),
             ),
@@ -903,7 +903,7 @@ class _StatRow extends StatelessWidget {
               child: Container(
                 height: 6,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [AppColors.accentRed.withOpacity(0.7), AppColors.accentRed]),
+                  gradient: LinearGradient(colors: [AppColors.accentRed.withValues(alpha: 0.7), AppColors.accentRed]),
                 ),
               ),
             ),
@@ -957,7 +957,7 @@ class _LineupTabState extends State<_LineupTab> {
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: context.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
+            color: context.isDark ? Colors.white.withValues(alpha: 0.04) : Colors.white,
             borderRadius: BorderRadius.circular(24),
           ),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
@@ -979,7 +979,7 @@ class _LineupTabState extends State<_LineupTab> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.06),
+                color: Colors.white.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text('vs', style: TextStyle(color: context.cTextMuted, fontSize: 11, fontWeight: FontWeight.w600)),
@@ -1117,7 +1117,7 @@ class _ListPlayer extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: context.cBgElevated,
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
             child: Center(child: Text(shirt, style: TextStyle(color: context.cTextSecondary, fontSize: 10, fontWeight: FontWeight.w700))),
           ),
@@ -1132,7 +1132,7 @@ class _ListPlayer extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                   decoration: BoxDecoration(
-                    color: _ratingColor(r).withOpacity(0.15),
+                    color: _ratingColor(r).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(3),
                   ),
                   child: Text(r.toStringAsFixed(1), style: TextStyle(color: _ratingColor(r), fontSize: 8, fontWeight: FontWeight.w700)),
@@ -1223,7 +1223,7 @@ class _FieldPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = Colors.white.withOpacity(0.3)..strokeWidth = 1.5..style = PaintingStyle.stroke;
+    final p = Paint()..color = Colors.white.withValues(alpha: 0.3)..strokeWidth = 1.5..style = PaintingStyle.stroke;
     final ox = (size.width - w) / 2;
     canvas.drawRect(Rect.fromLTWH(ox, pad, w, h - pad * 2), p);
     canvas.drawLine(Offset(ox, h / 2), Offset(ox + w, h / 2), p);
@@ -1259,8 +1259,8 @@ class _PitchPlayer extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(color: isHome ? AppColors.accentBlue : AppColors.accentRed, width: 2.5),
-              color: Colors.white.withOpacity(0.1),
-              boxShadow: [BoxShadow(color: (isHome ? AppColors.accentBlue : AppColors.accentRed).withOpacity(0.2), blurRadius: 8)],
+              color: Colors.white.withValues(alpha: 0.1),
+              boxShadow: [BoxShadow(color: (isHome ? AppColors.accentBlue : AppColors.accentRed).withValues(alpha: 0.2), blurRadius: 8)],
             ),
             child: ClipOval(child: id != null
               ? CachedNetworkImage(imageUrl: FotmobClient.playerImageUrl(id), fit: BoxFit.cover,
@@ -1275,7 +1275,7 @@ class _PitchPlayer extends StatelessWidget {
               child: Text(r.toStringAsFixed(1), style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: Colors.white)),
             ),
           Text(_lastName(name), style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w600,
-            shadows: [Shadow(blurRadius: 3, color: Colors.black.withOpacity(0.8))]),
+            shadows: [Shadow(blurRadius: 3, color: Colors.black.withValues(alpha: 0.8))]),
             textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
         ]),
       ),
@@ -1332,8 +1332,8 @@ class _BenchPlayer extends StatelessWidget {
             width: 30, height: 30,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.06),
-              border: Border.all(color: (isAway ? AppColors.accentRed : AppColors.accentBlue).withOpacity(0.4)),
+              color: Colors.white.withValues(alpha: 0.06),
+              border: Border.all(color: (isAway ? AppColors.accentRed : AppColors.accentBlue).withValues(alpha: 0.4)),
             ),
             child: ClipOval(child: id != null
               ? CachedNetworkImage(imageUrl: FotmobClient.playerImageUrl(id), fit: BoxFit.cover,
@@ -1367,7 +1367,7 @@ class _CoachRow extends StatelessWidget {
               width: 32, height: 32,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.06),
+                color: Colors.white.withValues(alpha: 0.06),
               ),
               child: ClipOval(child: id != null
                 ? CachedNetworkImage(imageUrl: FotmobClient.playerImageUrl(id), fit: BoxFit.cover,
@@ -1434,7 +1434,7 @@ class _H2HTab extends StatelessWidget {
                 Flexible(flex: hw > 0 ? hw : 1, child: Container(
                   height: 8,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [AppColors.accentBlue, AppColors.accentBlue.withOpacity(0.7)]),
+                    gradient: LinearGradient(colors: [AppColors.accentBlue, AppColors.accentBlue.withValues(alpha: 0.7)]),
                   ),
                 )),
                 const SizedBox(width: 2),
@@ -1443,7 +1443,7 @@ class _H2HTab extends StatelessWidget {
                 Flexible(flex: aw > 0 ? aw : 1, child: Container(
                   height: 8,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [AppColors.accentRed, AppColors.accentRed.withOpacity(0.7)]),
+                    gradient: LinearGradient(colors: [AppColors.accentRed, AppColors.accentRed.withValues(alpha: 0.7)]),
                   ),
                 )),
               ]),
@@ -1589,7 +1589,7 @@ class _PlayerStatsHeader extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(vertical: 6),
     decoration: BoxDecoration(
-      border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.06))),
+      border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
     ),
     child: Row(children: [
       Expanded(flex: 3, child: Row(children: [
@@ -1621,7 +1621,7 @@ class _PlayerStatRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.04))),
+          border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.04))),
         ),
         child: Row(children: [
           Expanded(flex: 3, child: Row(children: [
@@ -1736,8 +1736,8 @@ class _CommentaryTab extends ConsumerWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
-                      color: isGoal ? AppColors.accentGreen.withOpacity(0.15)
-                          : isCard ? AppColors.accentRed.withOpacity(0.12)
+                      color: isGoal ? AppColors.accentGreen.withValues(alpha: 0.15)
+                          : isCard ? AppColors.accentRed.withValues(alpha: 0.12)
                           : context.cBgElevated,
                       borderRadius: BorderRadius.circular(6),
                     ),
@@ -1756,11 +1756,11 @@ class _CommentaryTab extends ConsumerWidget {
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: isGoal ? AppColors.accentGreen.withOpacity(0.06)
+                      color: isGoal ? AppColors.accentGreen.withValues(alpha: 0.06)
                           : context.cBgCard,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isGoal ? AppColors.accentGreen.withOpacity(0.2)
+                        color: isGoal ? AppColors.accentGreen.withValues(alpha: 0.2)
                             : context.cBorder,
                       ),
                     ),

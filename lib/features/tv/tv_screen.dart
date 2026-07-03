@@ -470,7 +470,166 @@ class _TVScreenState extends ConsumerState<TVScreen> {
     );
   }
 
+  Widget _buildCategorizedListView() {
+    const categories = [
+      (TVCategory.Sports, 'SPORTS'),
+      (TVCategory.Cricket, 'CRICKET'),
+      (TVCategory.Football, 'FOOTBALL'),
+      (TVCategory.Bangla, 'BANGLA'),
+      (TVCategory.News, 'NEWS'),
+      (TVCategory.Entertainment, 'ENTERTAINMENT'),
+    ];
+
+    final Map<TVCategory, List<TVChannel>> grouped = {};
+    for (final cat in TVCategory.values) {
+      grouped[cat] = [];
+    }
+    for (final ch in _filtered) {
+      grouped[ch.category]?.add(ch);
+    }
+
+    final activeCategories = categories.where((item) => grouped[item.$1]?.isNotEmpty == true).toList();
+
+    if (activeCategories.isEmpty) {
+      return Center(child: Text('No channels match search',
+          style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter')));
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: activeCategories.length,
+      itemBuilder: (ctx, catIdx) {
+        final item = activeCategories[catIdx];
+        final catEnum = item.$1;
+        final catTitle = item.$2;
+        final list = grouped[catEnum]!;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 3, height: 12,
+                    decoration: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    catTitle,
+                    style: TextStyle(
+                      color: context.cTextPrimary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      fontFamily: 'Inter',
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: context.cBgElevated,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${list.length}',
+                      style: TextStyle(color: context.cTextSecondary, fontSize: 8, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 105,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: list.length,
+                itemBuilder: (ctx, i) {
+                  final ch = list[i];
+                  final isActive = _playing?.id == ch.id;
+                  final isWorking = _workingIds.contains(ch.id);
+                  return GestureDetector(
+                    onTap: () => _play(ch),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 90,
+                      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? const Color(0xFF00B4FF).withValues(alpha: 0.12)
+                            : context.cBgCard,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isActive
+                              ? const Color(0xFF00B4FF)
+                              : isWorking
+                                  ? const Color(0xFF22C55E).withValues(alpha: 0.4)
+                                  : context.cBorder,
+                          width: isActive ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Stack(
+                        children: [
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(6, 8, 6, 2),
+                                  child: _ChannelLogo(logoUrl: ch.logoUrl, name: ch.name),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                                child: Text(
+                                  ch.name,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: isActive ? const Color(0xFF00B4FF) : context.cTextPrimary,
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'Inter',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (isWorking && !isActive)
+                            Positioned(
+                              top: 4, right: 4,
+                              child: Container(
+                                width: 5, height: 5,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF22C55E),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildGrid() {
+    if (_cat == null) {
+      return _buildCategorizedListView();
+    }
     final channels = _filtered;
     if (channels.isEmpty) {
       return Center(child: Text('No channels',
@@ -650,26 +809,63 @@ class _PlayerStack extends StatelessWidget {
           Container(
             color: Colors.black,
             child: Center(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.signal_wifi_off_rounded, color: Color(0xFF8888AA), size: 36),
-                const SizedBox(height: 8),
-                const Text('Stream unavailable', style: TextStyle(
-                  color: Color(0xFF8888AA), fontSize: 12, fontFamily: 'Inter')),
-                const SizedBox(height: 10),
-                GestureDetector(
-                  onTap: onRetry,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF00B4FF),
-                      borderRadius: BorderRadius.circular(20),
+                      color: Colors.red.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
                     ),
-                    child: const Text('Retry', style: TextStyle(
-                      color: Colors.white, fontSize: 11,
-                      fontWeight: FontWeight.w700, fontFamily: 'Inter')),
+                    child: const Icon(Icons.signal_wifi_off_rounded,
+                        color: Color(0xFFFF5555), size: 36),
                   ),
-                ),
-              ]),
+                  const SizedBox(height: 12),
+                  const Text('Stream unavailable', style: TextStyle(
+                    color: Colors.white, fontSize: 14,
+                    fontFamily: 'Inter', fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  const Text('This channel may be offline or geo-restricted.',
+                    style: TextStyle(color: Color(0xFF8888AA), fontSize: 11,
+                        fontFamily: 'Inter', height: 1.4),
+                    textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    GestureDetector(
+                      onTap: onClose,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF333355),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text('Close', style: TextStyle(
+                          color: Color(0xFF8888CC), fontSize: 12,
+                          fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: onRetry,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00B4FF),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.refresh_rounded, color: Colors.white, size: 14),
+                          SizedBox(width: 4),
+                          Text('Retry', style: TextStyle(
+                            color: Colors.white, fontSize: 12,
+                            fontWeight: FontWeight.w700, fontFamily: 'Inter')),
+                        ]),
+                      ),
+                    ),
+                  ]),
+                ]),
+              ),
             ),
           ),
 

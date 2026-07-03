@@ -1,7 +1,7 @@
 name: crifo
 description: "CriFO - Football Score & Live TV App"
 publish_to: 'none'
-version: 1.3.0+5
+version: 1.4.1+7
 
 environment:
   sdk: ^3.8.1
@@ -46,6 +46,10 @@ dependencies:
   firebase_core: ^4.11.0
   firebase_analytics: ^12.4.3
   cloud_firestore: ^6.6.0
+
+  # Carousel & Security (Adopted from Falcon app concepts)
+  flutter_jailbreak_detection: ^1.2.1
+  carousel_slider: ^5.0.0
 
 dev_dependencies:
   flutter_test:

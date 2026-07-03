@@ -237,7 +237,7 @@ class _CountryTile extends StatelessWidget {
           collapsedIconColor: context.cTextMuted,
           leading: ccode.isNotEmpty
               ? ClipOval(child: CachedNetworkImage(
-                  imageUrl: 'https://images.fotmob.com/image_resources/logo/teamlogo/${ccode.toLowerCase()}.png',
+                  imageUrl: FotmobClient.teamLogoUrl(ccode.toLowerCase()),
                   width: 24, height: 24, fit: BoxFit.cover,
                   errorWidget: (_, __, ___) => Icon(Icons.flag_rounded, size: 18, color: context.cTextMuted)))
               : Icon(Icons.public_rounded, size: 18, color: context.cTextMuted),
@@ -249,7 +249,7 @@ class _CountryTile extends StatelessWidget {
                 dense: true,
                 contentPadding: const EdgeInsets.only(left: 48, right: 16),
                 leading: CachedNetworkImage(
-                  imageUrl: 'https://images.fotmob.com/image_resources/logo/leaguelogo/${_s(l['id'])}_small.png',
+                  imageUrl: FotmobClient.leagueLogoUrl(_s(l['id'])),
                   width: 18, height: 18,
                   errorWidget: (_, __, ___) => Icon(Icons.sports_soccer, size: 14, color: context.cTextMuted)),
                 title: Text(_s(l['name']), style: TextStyle(
@@ -406,7 +406,7 @@ class _ResultAvatar extends StatelessWidget {
     String? url;
     if (type == 'team') url = FotmobClient.teamLogoUrl(id);
     else if (type == 'player') url = FotmobClient.playerImageUrl(id);
-    else if (type == 'league' || type == 'tournament') url = 'https://images.fotmob.com/image_resources/logo/leaguelogo/${id}_small.png';
+    else if (type == 'league' || type == 'tournament') url = FotmobClient.leagueLogoUrl(id);
 
     return Container(
       width: 46, height: 46,

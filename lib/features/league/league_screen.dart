@@ -313,7 +313,7 @@ class _TableTab extends StatelessWidget {
               SizedBox(width: 24, child: Text(d, style: TextStyle(color: context.cTextSecondary, fontSize: 11), textAlign: TextAlign.center)),
               SizedBox(width: 24, child: Text(l, style: TextStyle(color: context.cTextSecondary, fontSize: 11), textAlign: TextAlign.center)),
               SizedBox(width: 28, child: Text('$gd', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                color: (gd as int) > 0 ? AppColors.accentGreen : gd < 0 ? AppColors.accentRed : context.cTextSecondary), textAlign: TextAlign.center)),
+                color: gd > 0 ? AppColors.accentGreen : gd < 0 ? AppColors.accentRed : context.cTextSecondary), textAlign: TextAlign.center)),
               SizedBox(width: 28, child: Text(pts, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: context.cTextPrimary), textAlign: TextAlign.center)),
             ]),
           ),
@@ -344,7 +344,7 @@ class _FixturesTab extends StatelessWidget {
       if (fixtures.isEmpty) fixtures = _l(fixturesObj['nextMatch']);
       if (fixtures.isEmpty) {
         for (final v in fixturesObj.values) {
-          if (v is List && (v as List).isNotEmpty) { fixtures = v; break; }
+          if (v is List && v.isNotEmpty) { fixtures = v; break; }
           if (v is Map) {
             final inner = _l(_m(v)['fixtures'] ?? _m(v)['matches'] ?? []);
             if (inner.isNotEmpty) { fixtures = inner; break; }
@@ -396,7 +396,7 @@ class _FixturesTab extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: isLive ? AppColors.live.withOpacity(0.12) : context.cBgElevated,
+                  color: isLive ? AppColors.live.withValues(alpha: 0.12) : context.cBgElevated,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -484,7 +484,7 @@ class _StatsTab extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: AppColors.accentBlue.withOpacity(0.15),
+                color: AppColors.accentBlue.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(goals, style: const TextStyle(color: AppColors.accentBlue, fontSize: 13, fontWeight: FontWeight.w700)),
@@ -585,7 +585,7 @@ class _LeagueNewsTab extends StatelessWidget {
 
         return GestureDetector(
           onTap: () async {
-            await openExternalLink(url, relativeBase: 'https://www.fotmob.com');
+            await openExternalLink(url);
           },
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -612,7 +612,7 @@ class _LeagueNewsTab extends StatelessWidget {
                       margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppColors.accentPrimary.withOpacity(0.12),
+                        color: AppColors.accentPrimary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(source.toUpperCase(), style: const TextStyle(

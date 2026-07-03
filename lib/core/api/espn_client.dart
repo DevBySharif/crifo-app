@@ -1,7 +1,15 @@
 import 'package:dio/dio.dart';
 import '../models/espn_match.dart';
 
-const _BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
+// Route the fallback data source through the same Cloudflare Worker so the
+// upstream host never appears in app traffic or the compiled APK.
+// Empty _PROXY = direct connection.
+const _PROXY = 'https://crifo-proxy.crifo-bd.workers.dev';
+String get _espn  => _PROXY.isNotEmpty ? '$_PROXY/espn'  : 'https://site.api.espn.com';
+String get _espnW => _PROXY.isNotEmpty ? '$_PROXY/espnw' : 'https://site.web.api.espn.com';
+String get _sdb   => _PROXY.isNotEmpty ? '$_PROXY/sdb'   : 'https://www.thesportsdb.com';
+
+final _BASE = '$_espn/apis/site/v2/sports/soccer';
 
 final _dio = Dio(BaseOptions(
   connectTimeout: const Duration(seconds: 10),
@@ -136,7 +144,7 @@ class EspnClient {
   static Future<List<Map<String, dynamic>>> getStandingsFromSportsDb(String leagueId) async {
     try {
       final res = await _dio.get(
-        'https://www.thesportsdb.com/api/v1/json/3/lookuptable.php?l=$leagueId&s=2026',
+        '$_sdb/api/v1/json/3/lookuptable.php?l=$leagueId&s=2026',
       );
       final data = res.data as Map<String, dynamic>;
       final table = data['table'] as List? ?? [];
@@ -193,8 +201,8 @@ class EspnClient {
       Map<String, dynamic> data = {};
       // Try multiple ESPN standing URLs
       final urls = [
-        'https://site.api.espn.com/apis/v2/sports/soccer/$leagueSlug/standings',
-        'https://site.web.api.espn.com/apis/v2/sports/soccer/$leagueSlug/standings?type=0&level=1',
+        '$_espn/apis/v2/sports/soccer/$leagueSlug/standings',
+        '$_espnW/apis/v2/sports/soccer/$leagueSlug/standings?type=0&level=1',
         '$_BASE/$leagueSlug/standings',
       ];
       for (final url in urls) {

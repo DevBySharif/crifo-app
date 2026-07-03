@@ -1,12 +1,36 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 
-const _BASE = 'https://api.football-data.org/v4';
-const _TOKEN = '5bfc00e6b7f04977b89a454666d9c4fa';
+// ─── Proxy-based football-data.org client ─────────────────────────────────────
+//
+// SECURITY: The football-data.org API token is stored as a Cloudflare Worker
+// secret (env.FD_TOKEN) and injected server-side by the proxy. The token is
+// NOT present in this source file or the compiled APK.
+//
+// To activate:
+//   1. Deploy the updated proxy/worker.js to Cloudflare
+//   2. Run: wrangler secret put FD_TOKEN  (paste your token)
+//   3. Verify: curl https://crifo-proxy.crifo-bd.workers.dev/fd/competitions/PL/standings
+//
+// When the proxy is unavailable, requests fallback to direct (which will
+// 401 without a token — acceptable for dev; production must use the proxy).
+
+const _FD_ORIGIN = 'https://api.football-data.org/v4';
+
+// Same Cloudflare Worker as FotMob proxy, different route (/fd/*).
+// Token injected server-side from env.FD_TOKEN Cloudflare secret.
+const _PROXY = 'https://crifo-proxy.crifo-bd.workers.dev';
+
+// Proxy base for /fd/* route — falls back to direct if proxy is empty.
+String get _fdBase {
+  if (_PROXY.isNotEmpty) return '$_PROXY/fd';
+  return _FD_ORIGIN;
+}
 
 final _dio = Dio(BaseOptions(
   connectTimeout: const Duration(seconds: 10),
   receiveTimeout: const Duration(seconds: 15),
-  headers: {'X-Auth-Token': _TOKEN},
+  // No X-Auth-Token header here — the Worker injects it from env.FD_TOKEN
 ));
 
 // FotMob primaryId → football-data.org competition code
@@ -30,8 +54,11 @@ class FootballDataClient {
 
   static Future<List<Map<String, dynamic>>> getStandings(String code) async {
     try {
-      final res = await _dio.get('$_BASE/competitions/$code/standings');
-      final data = res.data as Map<String, dynamic>;
+      final res = await _dio.get('$_fdBase/competitions/$code/standings');
+      final rawData = res.data;
+      final Map<String, dynamic> data = rawData is String
+          ? jsonDecode(rawData) as Map<String, dynamic>
+          : rawData as Map<String, dynamic>;
       final standings = data['standings'] as List? ?? [];
 
       // Find TOTAL standings (not HOME/AWAY)
@@ -50,15 +77,15 @@ class FootballDataClient {
           'id': team['id']?.toString() ?? '',
           'name': team['shortName']?.toString() ?? team['name']?.toString() ?? '',
           'logo': team['crest']?.toString() ?? '',
-          'played': (m['playedGames'] ?? 0) as int,
-          'wins': (m['won'] ?? 0) as int,
-          'draws': (m['draw'] ?? 0) as int,
-          'losses': (m['lost'] ?? 0) as int,
-          'goalsFor': (m['goalsFor'] ?? 0) as int,
-          'goalsAgainst': (m['goalsAgainst'] ?? 0) as int,
-          'gd': (m['goalDifference'] ?? 0) as int,
-          'pts': (m['points'] ?? 0) as int,
-          'pos': (m['position'] ?? 0) as int,
+          'played': (m['playedGames'] as num? ?? 0).toInt(),
+          'wins': (m['won'] as num? ?? 0).toInt(),
+          'draws': (m['draw'] as num? ?? 0).toInt(),
+          'losses': (m['lost'] as num? ?? 0).toInt(),
+          'goalsFor': (m['goalsFor'] as num? ?? 0).toInt(),
+          'goalsAgainst': (m['goalsAgainst'] as num? ?? 0).toInt(),
+          'gd': (m['goalDifference'] as num? ?? 0).toInt(),
+          'pts': (m['points'] as num? ?? 0).toInt(),
+          'pos': (m['position'] as num? ?? 0).toInt(),
         };
       }).toList();
     } catch (_) {
@@ -69,8 +96,11 @@ class FootballDataClient {
   // For competitions with groups (World Cup, UCL group stage)
   static Future<List<Map<String, dynamic>>> getAllGroupStandings(String code) async {
     try {
-      final res = await _dio.get('$_BASE/competitions/$code/standings');
-      final data = res.data as Map<String, dynamic>;
+      final res = await _dio.get('$_fdBase/competitions/$code/standings');
+      final rawData = res.data;
+      final Map<String, dynamic> data = rawData is String
+          ? jsonDecode(rawData) as Map<String, dynamic>
+          : rawData as Map<String, dynamic>;
       final standings = data['standings'] as List? ?? [];
 
       final allRows = <Map<String, dynamic>>[];
@@ -85,15 +115,15 @@ class FootballDataClient {
             'id': team['id']?.toString() ?? '',
             'name': team['shortName']?.toString() ?? team['name']?.toString() ?? '',
             'logo': team['crest']?.toString() ?? '',
-            'played': (m['playedGames'] ?? 0) as int,
-            'wins': (m['won'] ?? 0) as int,
-            'draws': (m['draw'] ?? 0) as int,
-            'losses': (m['lost'] ?? 0) as int,
-            'goalsFor': (m['goalsFor'] ?? 0) as int,
-            'goalsAgainst': (m['goalsAgainst'] ?? 0) as int,
-            'gd': (m['goalDifference'] ?? 0) as int,
-            'pts': (m['points'] ?? 0) as int,
-            'pos': (m['position'] ?? 0) as int,
+            'played': (m['playedGames'] as num? ?? 0).toInt(),
+            'wins': (m['won'] as num? ?? 0).toInt(),
+            'draws': (m['draw'] as num? ?? 0).toInt(),
+            'losses': (m['lost'] as num? ?? 0).toInt(),
+            'goalsFor': (m['goalsFor'] as num? ?? 0).toInt(),
+            'goalsAgainst': (m['goalsAgainst'] as num? ?? 0).toInt(),
+            'gd': (m['goalDifference'] as num? ?? 0).toInt(),
+            'pts': (m['points'] as num? ?? 0).toInt(),
+            'pos': (m['position'] as num? ?? 0).toInt(),
             'group': groupName,
           });
         }

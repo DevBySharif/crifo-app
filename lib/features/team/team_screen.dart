@@ -19,7 +19,7 @@ String _resolveI18n(dynamic v) {
   if (v == null) return '';
   if (v is String) return v;
   if (v is Map) {
-    final m = v is Map<String, dynamic> ? v : (v as Map).cast<String, dynamic>();
+    final m = v is Map<String, dynamic> ? v : v.cast<String, dynamic>();
     return _s(m['fallback'] ?? m['short'] ?? m['key'] ?? '');
   }
   return v.toString();
@@ -122,9 +122,9 @@ class _GlassCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: padding ?? const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: context.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
+      color: context.isDark ? Colors.white.withValues(alpha: 0.04) : Colors.white,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: context.isDark ? Colors.white.withOpacity(0.06) : AppColors.borderLightMode),
+      border: Border.all(color: context.isDark ? Colors.white.withValues(alpha: 0.06) : AppColors.borderLightMode),
     ),
     child: child,
   );
@@ -174,7 +174,7 @@ class _OverviewTab extends StatelessWidget {
               width: 100, height: 100,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: Colors.white.withOpacity(0.08), blurRadius: 25, spreadRadius: 5)],
+                boxShadow: [BoxShadow(color: Colors.white.withValues(alpha: 0.08), blurRadius: 25, spreadRadius: 5)],
               ),
               child: ClipOval(
                 child: CachedNetworkImage(imageUrl: FotmobClient.teamLogoUrl(details['id']), width: 100, height: 100, fit: BoxFit.cover,
@@ -192,7 +192,7 @@ class _OverviewTab extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -223,7 +223,7 @@ class _OverviewTab extends StatelessWidget {
               Container(
                 width: 44, height: 44,
                 decoration: BoxDecoration(
-                  color: AppColors.accentBlue.withOpacity(0.1),
+                  color: AppColors.accentBlue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.stadium_outlined, color: AppColors.accentBlue, size: 22),
@@ -275,8 +275,8 @@ class _OverviewTab extends StatelessWidget {
               Container(
                 width: 30, height: 30,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle,
-                  border: Border.all(color: color.withOpacity(0.5))),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle,
+                  border: Border.all(color: color.withValues(alpha: 0.5))),
                 child: Text(letter, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w800)),
               ),
               if (score.isNotEmpty) ...[
@@ -430,9 +430,9 @@ class _TeamFixturesTab extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: isLive ? AppColors.live.withOpacity(0.12) : context.cBgElevated,
+                    color: isLive ? AppColors.live.withValues(alpha: 0.12) : context.cBgElevated,
                     borderRadius: BorderRadius.circular(8),
-                    border: isLive ? Border.all(color: AppColors.live.withOpacity(0.3)) : null,
+                    border: isLive ? Border.all(color: AppColors.live.withValues(alpha: 0.3)) : null,
                   ),
                   child: Text(
                     score.isNotEmpty ? score : timeStr,
@@ -542,10 +542,10 @@ class _SquadTab extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: AppColors.accentBlue.withOpacity(0.08),
+                            color: AppColors.accentBlue.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text(pos, style: TextStyle(color: AppColors.accentBlue.withOpacity(0.7), fontSize: 10, fontWeight: FontWeight.w600)),
+                          child: Text(pos, style: TextStyle(color: AppColors.accentBlue.withValues(alpha: 0.7), fontSize: 10, fontWeight: FontWeight.w600)),
                         ),
                     ]),
                   ),

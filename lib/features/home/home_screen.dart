@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,6 +7,7 @@ import '../../core/api/espn_client.dart';
 import '../../core/theme/colors.dart';
 import '../../core/theme/theme_provider.dart';
 import '../match_detail/match_detail_screen.dart';
+import 'package:carousel_slider/carousel_slider.dart';
 
 // ── Providers ──────────────────────────────────────────────────────────────────
 final _matchesProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, date) async {
@@ -354,30 +354,6 @@ class _NewsBanner extends ConsumerStatefulWidget {
 
 class _NewsBannerState extends ConsumerState<_NewsBanner> {
   int _index = 0;
-  Timer? _timer;
-  final _controller = PageController();
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted || !_controller.hasClients) return;
-      final items = ref.read(_newsProvider).valueOrNull ?? [];
-      final count = items.length > 5 ? 5 : items.length;
-      if (count <= 1) return;
-      final next = (_index + 1) % count;
-      setState(() => _index = next);
-      _controller.animateToPage(next,
-          duration: const Duration(milliseconds: 500), curve: Curves.easeInOutCubic);
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -387,42 +363,61 @@ class _NewsBannerState extends ConsumerState<_NewsBanner> {
         if (articles.isEmpty) return const SizedBox.shrink();
         final items = articles.take(5).toList();
         return Column(children: [
-          SizedBox(
-            height: 220,
-            child: Stack(children: [
-              PageView.builder(
-                controller: _controller,
-                itemCount: items.length,
-                onPageChanged: (i) => setState(() => _index = i),
-                itemBuilder: (ctx, i) => _NewsSlide(article: items[i]),
-              ),
-              // Gradient page indicators
-              Positioned(
-                bottom: 14, left: 0, right: 0,
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  for (int i = 0; i < items.length; i++)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 350),
-                      curve: Curves.easeOutCubic,
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: i == _index ? 22 : 6,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        gradient: i == _index ? AppColors.primaryGradient : null,
-                        color: i == _index ? null : context.cTextMuted.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                ]),
-              ),
-            ]),
+          CarouselSlider(
+            options: CarouselOptions(
+              height: 220,
+              viewportFraction: 0.92,
+              enlargeCenterPage: true,
+              enlargeFactor: 0.16,
+              autoPlay: true,
+              autoPlayInterval: const Duration(seconds: 5),
+              autoPlayAnimationDuration: const Duration(milliseconds: 800),
+              autoPlayCurve: Curves.fastOutSlowIn,
+              onPageChanged: (index, reason) {
+                setState(() => _index = index);
+              },
+            ),
+            items: items.map((article) {
+              return Builder(
+                builder: (BuildContext context) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: _NewsSlide(article: article),
+                  );
+                },
+              );
+            }).toList(),
           ),
+          const SizedBox(height: 12),
+          // Gradient page indicators
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (int i = 0; i < items.length; i++)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOutCubic,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: i == _index ? 22 : 6,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    gradient: i == _index ? AppColors.primaryGradient : null,
+                    color: i == _index ? null : context.cTextMuted.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
         ]);
       },
       loading: () => Container(
         height: 220,
-        margin: const EdgeInsets.only(bottom: 2),
-        color: context.cBgCard,
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: context.cBgCard,
+          borderRadius: BorderRadius.circular(16),
+        ),
         child: const Center(child: _PremiumLoader()),
       ),
       error: (_, __) => const SizedBox.shrink(),
@@ -780,7 +775,7 @@ class _TransfersSection extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppColors.accentGold.withOpacity(0.12),
+                        color: AppColors.accentGold.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(fee.isEmpty ? 'Free' : fee,

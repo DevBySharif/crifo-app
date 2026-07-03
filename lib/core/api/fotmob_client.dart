@@ -1,37 +1,14 @@
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 
-const _BASE = 'https://www.fotmob.com';
-const _API = '$_BASE/api/data';
-
-// Cloudflare Worker proxy (see proxy/worker.js). Routing FotMob traffic through
-// it avoids mobile-carrier IP blocks that make the app look empty on mobile
-// data. Leave empty for a direct connection. The x-mas token still signs the
-// real fotmob.com URL, so only the request host changes.
+// All data flows through the CriFO Cloudflare Worker (see proxy/worker.js).
+// The Worker signs the request server-side, so the signing key and the
+// upstream host never ship inside this app. Leave empty only for local dev
+// with a self-hosted upstream.
 const _PROXY = 'https://crifo-proxy.crifo-bd.workers.dev';
 
-// Ordered list of hosts to try for a given fotmob API URL — proxy first (when
-// configured), then a direct connection as a fallback.
-List<String> _requestUrls(String fotmobUrl) {
-  if (_PROXY.isEmpty) return [fotmobUrl];
-  return [fotmobUrl.replaceFirst(_BASE, _PROXY), fotmobUrl];
-}
-
-// Reverse-engineered from FotMob's app bundle
-const _FOTMOB_KEY =
-    "[Spoken Intro: Alan Hansen & Trevor Brooking]\nI think it's bad news for the English game\nWe're not creative enough, and we're not positive enough\n\n[Refrain: Ian Broudie & Jimmy Hill]\nIt's coming home, it's coming home, it's coming\nFootball's coming home (We'll go on getting bad results)\nIt's coming home, it's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\n\n[Verse 1: Frank Skinner]\nEveryone seems to know the score, they've seen it all before\nThey just know, they're so sure\nThat England's gonna throw it away, gonna blow it away\nBut I know they can play, 'cause I remember\n\n[Chorus: All]\nThree lions on a shirt\nJules Rimet still gleaming\nThirty years of hurt\nNever stopped me dreaming\n\n[Verse 2: David Baddiel]\nSo many jokes, so many sneers\nBut all those \"Oh, so near\"s wear you down through the years\nBut I still see that tackle by Moore and when Lineker scored\nBobby belting the ball, and Nobby dancing\n\n[Chorus: All]\nThree lions on a shirt\nJules Rimet still gleaming\nThirty years of hurt\nNever stopped me dreaming\n\n[Bridge]\nEngland have done it, in the last minute of extra time!\nWhat a save, Gordon Banks!\nGood old England, England that couldn't play football!\nEngland have got it in the bag!\nI know that was then, but it could be again\n\n[Refrain: Ian Broudie]\nIt's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\n(England have done it!)\nIt's coming home, it's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\n[Chorus: All]\n(It's coming home) Three lions on a shirt\n(It's coming home, it's coming) Jules Rimet still gleaming\n(Football's coming home\nIt's coming home) Thirty years of hurt\n(It's coming home, it's coming) Never stopped me dreaming\n(Football's coming home\nIt's coming home) Three lions on a shirt\n(It's coming home, it's coming) Jules Rimet still gleaming\n(Football's coming home\nIt's coming home) Thirty years of hurt\n(It's coming home, it's coming) Never stopped me dreaming\n(Football's coming home\nIt's coming home) Three lions on a shirt\n(It's coming home, it's coming) Jules Rimet still gleaming\n(Football's coming home\nIt's coming home) Thirty years of hurt\n(It's coming home, it's coming) Never stopped me dreaming\n(Football's coming home)";
-
-String _generateXMasToken(String fullUrl) {
-  final body = {
-    'url': fullUrl,
-    'code': DateTime.now().millisecondsSinceEpoch,
-    'foo': 'production:ab158bb5c6ae907ba504afdadac27a92a4dca7c2',
-  };
-  final toSign = jsonEncode(body) + _FOTMOB_KEY;
-  final signature = sha256.convert(utf8.encode(toSign)).toString();
-  return base64.encode(utf8.encode(jsonEncode({'body': body, 'signature': signature})));
-}
+// Base for the data API. The Worker's /api/data/* route reconstructs and
+// signs the upstream request.
+String get _apiBase => '$_PROXY/api/data';
 
 // Decode common HTML entities in news titles/sources (e.g. &#8211; → –)
 String _decodeEntities(String s) {
@@ -64,11 +41,8 @@ final _dio = Dio(BaseOptions(
   connectTimeout: const Duration(seconds: 10),
   receiveTimeout: const Duration(seconds: 15),
   headers: {
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36',
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.fotmob.com/',
-    'Origin': 'https://www.fotmob.com',
   },
 ));
 
@@ -82,20 +56,16 @@ class FotmobClient {
     final cached = _cache[cacheKey];
     if (cached != null && now.isBefore(cached.expiry)) return cached.data;
 
-    final fullUrl = '$_API/$endpoint$query';
-    final token = _generateXMasToken(fullUrl);
-    final urls = _requestUrls(fullUrl); // [proxy, direct] or [direct]
+    final url = '$_apiBase/$endpoint$query';
 
     Map<String, dynamic> data = <String, dynamic>{};
 
-    // Retry up to 4 times — FotMob rate-limits league endpoints. Each attempt
-    // alternates between proxy and direct so one bad path can't strand us.
+    // Retry up to 4 times — the upstream rate-limits some endpoints.
     for (int attempt = 0; attempt < 4; attempt++) {
       if (attempt > 0) await Future.delayed(Duration(milliseconds: 800 * attempt));
-      final url = urls[attempt % urls.length];
 
       try {
-        final res = await _dio.get(url, options: Options(headers: {'x-mas': token}));
+        final res = await _dio.get(url);
         if (res.data is Map<String, dynamic>) {
           data = res.data as Map<String, dynamic>;
         } else if (res.data is Map) {
@@ -157,7 +127,7 @@ class FotmobClient {
         if (val == null) continue;
         if (val is List && val.isNotEmpty) {
           return val
-              .map((e) => e is Map ? (e is Map<String, dynamic> ? e : (e as Map).cast<String, dynamic>()) : <String, dynamic>{})
+              .map((e) => e is Map<String, dynamic> ? e : e is Map ? e.cast<String, dynamic>() : <String, dynamic>{})
               .where((e) => e.isNotEmpty)
               .toList()
               .reversed
@@ -166,8 +136,8 @@ class FotmobClient {
         if (val is Map) {
           final entries = val['entries'] ?? val['comments'] ?? val['items'] ?? val['commentary'] ?? [];
           if (entries is List && entries.isNotEmpty) {
-            return (entries as List)
-                .map((e) => e is Map ? (e is Map<String, dynamic> ? e : (e as Map).cast<String, dynamic>()) : <String, dynamic>{})
+            return entries
+                .map((e) => e is Map<String, dynamic> ? e : e is Map ? e.cast<String, dynamic>() : <String, dynamic>{})
                 .where((e) => e.isNotEmpty)
                 .toList()
                 .reversed
@@ -199,16 +169,12 @@ class FotmobClient {
 
   static Future<List<Map<String, dynamic>>> search(String term) async {
     final query = '?' + {'term': term}.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value.toString())}').join('&');
-    final fullUrl = '$_API/search/suggest$query';
-    final token = _generateXMasToken(fullUrl);
+    final url = '$_apiBase/search/suggest$query';
     dynamic resData;
-    for (final url in _requestUrls(fullUrl)) {
-      try {
-        final res = await _dio.get(url, options: Options(headers: {'x-mas': token}));
-        if (res.data is List && (res.data as List).isNotEmpty) { resData = res.data; break; }
-        resData ??= res.data;
-      } catch (_) {}
-    }
+    try {
+      final res = await _dio.get(url);
+      resData = res.data;
+    } catch (_) {}
     final items = resData is List ? resData : [];
     final results = <Map<String, dynamic>>[];
     for (final group in items) {
@@ -223,32 +189,15 @@ class FotmobClient {
   }
 
   static Future<Map<String, dynamic>> getLeagueDetails(String id, {String? season}) async {
-    // Generate token fresh and make direct request — bypass _get retry/cache logic
     final params = {'id': id, 'tab': 'overview', 'type': 'league', 'timeZone': 'Asia/Dhaka'};
     if (season != null) params['season'] = season;
     final query = '?' + params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
-    final url = '$_API/leagues$query';
-    final token = _generateXMasToken(url);
+    final url = '$_apiBase/leagues$query';
 
-    final freshDio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 12),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {
-        'x-mas': token,
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.fotmob.com/leagues/$id',
-        'Origin': 'https://www.fotmob.com',
-      },
-    ));
-
-    final hosts = _requestUrls(url); // [proxy, direct] or [direct]
     for (int i = 0; i < 4; i++) {
       if (i > 0) await Future.delayed(Duration(seconds: i));
       try {
-        final token2 = _generateXMasToken(url); // fresh token each attempt
-        final res = await freshDio.get(hosts[i % hosts.length], options: Options(headers: {'x-mas': token2}));
+        final res = await _dio.get(url);
         if (res.data is Map<String, dynamic> && (res.data as Map).isNotEmpty) {
           return res.data as Map<String, dynamic>;
         }
@@ -326,9 +275,19 @@ class FotmobClient {
   static Future<Map<String, dynamic>> getTeamStatsLegacy(String teamId) =>
       _get('teamStats', params: {'teamId': teamId});
 
+  // Image base: through the proxy when configured, else direct. Keeps the
+  // upstream image host out of the compiled app when a proxy is set.
+  static String get _imgBase =>
+      _PROXY.isNotEmpty ? '$_PROXY/img/image_resources' : 'https://images.fotmob.com/image_resources';
+
   static String teamLogoUrl(dynamic id) =>
-      'https://images.fotmob.com/image_resources/logo/teamlogo/${id}_small.png';
+      '$_imgBase/logo/teamlogo/${id}_small.png';
 
   static String playerImageUrl(dynamic id) =>
-      'https://images.fotmob.com/image_resources/playerimages/$id.png';
+      '$_imgBase/playerimages/$id.png';
+
+  static String leagueLogoUrl(dynamic id) =>
+      '$_imgBase/logo/leaguelogo/${id}_small.png';
+
+  static String teamLogoUrlById(dynamic id) => teamLogoUrl(id);
 }

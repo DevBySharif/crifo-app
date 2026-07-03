@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 
 /// Installed build number. Bump this together with pubspec `version: x.y.z+N`
 /// on every release so the in-app update prompt can detect newer builds.
-const kAppVersionCode = 5;
+const kAppVersionCode = 7;
 
 const _versionUrl = 'https://crifo.netlify.app/version.json';
 

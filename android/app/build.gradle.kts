@@ -12,12 +12,12 @@ android {
     ndkVersion = "27.1.12297006"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
@@ -33,10 +33,21 @@ android {
 
     buildTypes {
         release {
+            // TODO: Replace with a proper keystore before publishing to Google Play.
+            // See: https://docs.flutter.dev/deployment/android#signing-the-app
             signingConfig = signingConfigs.getByName("debug")
-            // R8 code-shrink/obfuscate is available via proguard-rules.pro but is
-            // left off here: it OOMs on low-RAM build machines. Enable on CI or a
-            // 16GB+ machine by setting isMinifyEnabled = true.
+
+            // R8 code shrinking + obfuscation is disabled here because gradle.properties
+            // restricts Gradle JVM memory to 2GB (-Xmx2g). Running R8 with 2GB causes
+            // severe GC thrashing and takes over 45+ minutes or hangs.
+            isMinifyEnabled = false
+            isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+        debug {
             isMinifyEnabled = false
             isShrinkResources = false
         }
