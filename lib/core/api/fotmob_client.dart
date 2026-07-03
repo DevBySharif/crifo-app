@@ -5,6 +5,19 @@ import 'package:dio/dio.dart';
 const _BASE = 'https://www.fotmob.com';
 const _API = '$_BASE/api/data';
 
+// Cloudflare Worker proxy (see proxy/worker.js). Routing FotMob traffic through
+// it avoids mobile-carrier IP blocks that make the app look empty on mobile
+// data. Leave empty for a direct connection. The x-mas token still signs the
+// real fotmob.com URL, so only the request host changes.
+const _PROXY = 'https://crifo-proxy.crifo-bd.workers.dev';
+
+// Ordered list of hosts to try for a given fotmob API URL — proxy first (when
+// configured), then a direct connection as a fallback.
+List<String> _requestUrls(String fotmobUrl) {
+  if (_PROXY.isEmpty) return [fotmobUrl];
+  return [fotmobUrl.replaceFirst(_BASE, _PROXY), fotmobUrl];
+}
+
 // Reverse-engineered from FotMob's app bundle
 const _FOTMOB_KEY =
     "[Spoken Intro: Alan Hansen & Trevor Brooking]\nI think it's bad news for the English game\nWe're not creative enough, and we're not positive enough\n\n[Refrain: Ian Broudie & Jimmy Hill]\nIt's coming home, it's coming home, it's coming\nFootball's coming home (We'll go on getting bad results)\nIt's coming home, it's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\n\n[Verse 1: Frank Skinner]\nEveryone seems to know the score, they've seen it all before\nThey just know, they're so sure\nThat England's gonna throw it away, gonna blow it away\nBut I know they can play, 'cause I remember\n\n[Chorus: All]\nThree lions on a shirt\nJules Rimet still gleaming\nThirty years of hurt\nNever stopped me dreaming\n\n[Verse 2: David Baddiel]\nSo many jokes, so many sneers\nBut all those \"Oh, so near\"s wear you down through the years\nBut I still see that tackle by Moore and when Lineker scored\nBobby belting the ball, and Nobby dancing\n\n[Chorus: All]\nThree lions on a shirt\nJules Rimet still gleaming\nThirty years of hurt\nNever stopped me dreaming\n\n[Bridge]\nEngland have done it, in the last minute of extra time!\nWhat a save, Gordon Banks!\nGood old England, England that couldn't play football!\nEngland have got it in the bag!\nI know that was then, but it could be again\n\n[Refrain: Ian Broudie]\nIt's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\n(England have done it!)\nIt's coming home, it's coming home, it's coming\nFootball's coming home\nIt's coming home, it's coming home, it's coming\nFootball's coming home\n[Chorus: All]\n(It's coming home) Three lions on a shirt\n(It's coming home, it's coming) Jules Rimet still gleaming\n(Football's coming home\nIt's coming home) Thirty years of hurt\n(It's coming home, it's coming) Never stopped me dreaming\n(Football's coming home\nIt's coming home) Three lions on a shirt\n(It's coming home, it's coming) Jules Rimet still gleaming\n(Football's coming home\nIt's coming home) Thirty years of hurt\n(It's coming home, it's coming) Never stopped me dreaming\n(Football's coming home\nIt's coming home) Three lions on a shirt\n(It's coming home, it's coming) Jules Rimet still gleaming\n(Football's coming home\nIt's coming home) Thirty years of hurt\n(It's coming home, it's coming) Never stopped me dreaming\n(Football's coming home)";
@@ -71,15 +84,18 @@ class FotmobClient {
 
     final fullUrl = '$_API/$endpoint$query';
     final token = _generateXMasToken(fullUrl);
+    final urls = _requestUrls(fullUrl); // [proxy, direct] or [direct]
 
     Map<String, dynamic> data = <String, dynamic>{};
 
-    // Retry up to 4 times — FotMob rate-limits league endpoints
+    // Retry up to 4 times — FotMob rate-limits league endpoints. Each attempt
+    // alternates between proxy and direct so one bad path can't strand us.
     for (int attempt = 0; attempt < 4; attempt++) {
       if (attempt > 0) await Future.delayed(Duration(milliseconds: 800 * attempt));
+      final url = urls[attempt % urls.length];
 
       try {
-        final res = await _dio.get(fullUrl, options: Options(headers: {'x-mas': token}));
+        final res = await _dio.get(url, options: Options(headers: {'x-mas': token}));
         if (res.data is Map<String, dynamic>) {
           data = res.data as Map<String, dynamic>;
         } else if (res.data is Map) {
@@ -90,7 +106,7 @@ class FotmobClient {
         // res.data == null means JSON null response → retry
         if (data.isNotEmpty) break;
       } catch (_) {
-        if (attempt == 2) break;
+        // keep looping — next attempt tries the other host
       }
     }
 
@@ -185,8 +201,15 @@ class FotmobClient {
     final query = '?' + {'term': term}.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value.toString())}').join('&');
     final fullUrl = '$_API/search/suggest$query';
     final token = _generateXMasToken(fullUrl);
-    final res = await _dio.get(fullUrl, options: Options(headers: {'x-mas': token}));
-    final items = res.data is List ? (res.data as List) : [];
+    dynamic resData;
+    for (final url in _requestUrls(fullUrl)) {
+      try {
+        final res = await _dio.get(url, options: Options(headers: {'x-mas': token}));
+        if (res.data is List && (res.data as List).isNotEmpty) { resData = res.data; break; }
+        resData ??= res.data;
+      } catch (_) {}
+    }
+    final items = resData is List ? resData : [];
     final results = <Map<String, dynamic>>[];
     for (final group in items) {
       if (group is Map) {
@@ -220,11 +243,12 @@ class FotmobClient {
       },
     ));
 
-    for (int i = 0; i < 3; i++) {
+    final hosts = _requestUrls(url); // [proxy, direct] or [direct]
+    for (int i = 0; i < 4; i++) {
       if (i > 0) await Future.delayed(Duration(seconds: i));
       try {
         final token2 = _generateXMasToken(url); // fresh token each attempt
-        final res = await freshDio.get(url, options: Options(headers: {'x-mas': token2}));
+        final res = await freshDio.get(hosts[i % hosts.length], options: Options(headers: {'x-mas': token2}));
         if (res.data is Map<String, dynamic> && (res.data as Map).isNotEmpty) {
           return res.data as Map<String, dynamic>;
         }

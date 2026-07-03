@@ -1,0 +1,8 @@
+{
+  "name": "crifo-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "wrangler": "^4.107.0"
+  }
+}

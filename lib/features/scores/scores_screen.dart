@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/api/fotmob_client.dart';
+import '../../core/api/espn_client.dart';
 import '../../core/theme/colors.dart';
 import '../match_detail/match_detail_screen.dart';
 import '../league/league_screen.dart';
@@ -17,7 +18,15 @@ String _s(dynamic v) => v?.toString() ?? '';
 
 final _scoresProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, date) async {
   ref.keepAlive();
-  return FotmobClient.getMatchesByDate(date);
+  final data = await FotmobClient.getMatchesByDate(date);
+  final leagues = data['leagues'];
+  if (leagues is List && leagues.isNotEmpty) return data;
+  // FotMob returned nothing (e.g. blocked carrier IP) → fall back to ESPN.
+  try {
+    final espn = await EspnClient.getScoreboardAsLeagues(date: date);
+    if ((espn['leagues'] as List?)?.isNotEmpty == true) return espn;
+  } catch (_) {}
+  return data;
 });
 
 String _fmtDate(DateTime dt) => '${dt.year}${dt.month.toString().padLeft(2, '0')}${dt.day.toString().padLeft(2, '0')}';

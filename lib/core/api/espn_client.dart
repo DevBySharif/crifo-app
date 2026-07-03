@@ -31,6 +31,49 @@ class EspnClient {
     return results.expand((x) => x).toList();
   }
 
+  // ESPN slug → FotMob primaryId (reverse of fotmobToEspnSlug) so tapping a
+  // fallback match still opens the right FotMob league screen.
+  static const _slugToPrimaryId = {
+    'eng.1': '47', 'esp.1': '87', 'ger.1': '54', 'ita.1': '55', 'fra.1': '53',
+    'uefa.champions': '42', 'eng.2': '73', 'por.1': '108', 'ned.1': '67',
+    'tur.1': '130', 'fifa.world': '77',
+  };
+
+  // Scoreboard reshaped into FotMob's {leagues:[{name,id,primaryId,matches:[
+  // {id, home{id,name}, away{id,name}, status{scoreStr,utcTime,started,
+  // finished,liveTime{short}}}]}]} so Home/Scores can render it unchanged.
+  // Used as a fallback when the FotMob feed is blocked (e.g. carrier IP).
+  static Future<Map<String, dynamic>> getScoreboardAsLeagues({String? date}) async {
+    final matches = await getScoreboard(date: date);
+    if (matches.isEmpty) return {};
+
+    final byLeague = <String, Map<String, dynamic>>{};
+    for (final m in matches) {
+      final key = m.leagueName;
+      final league = byLeague.putIfAbsent(key, () => {
+        'name': m.leagueName,
+        'id': _slugToPrimaryId[m.leagueSlug] ?? m.leagueSlug,
+        'primaryId': _slugToPrimaryId[m.leagueSlug],
+        'ccode': '',
+        'matches': <Map<String, dynamic>>[],
+      });
+      final hasScore = m.isLive || m.isPost;
+      (league['matches'] as List).add({
+        'id': m.id,
+        'home': {'id': m.teamAId, 'name': m.teamA},
+        'away': {'id': m.teamBId, 'name': m.teamB},
+        'status': {
+          'scoreStr': hasScore ? '${m.scoreA} - ${m.scoreB}' : '',
+          'utcTime': m.date,
+          'started': m.isLive || m.isPost,
+          'finished': m.isPost,
+          'liveTime': {'short': m.displayClock ?? ''},
+        },
+      });
+    }
+    return {'leagues': byLeague.values.toList()};
+  }
+
   static Future<Map<String, dynamic>> getMatchSummary(String leagueSlug, String eventId) async {
     final res = await _dio.get('$_BASE/$leagueSlug/summary?event=$eventId');
     return res.data as Map<String, dynamic>;

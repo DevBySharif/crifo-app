@@ -25,7 +25,7 @@ android {
         applicationId = "com.crifo.crifo"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -34,6 +34,9 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
+            // R8 code-shrink/obfuscate is available via proguard-rules.pro but is
+            // left off here: it OOMs on low-RAM build machines. Enable on CI or a
+            // 16GB+ machine by setting isMinifyEnabled = true.
             isMinifyEnabled = false
             isShrinkResources = false
         }

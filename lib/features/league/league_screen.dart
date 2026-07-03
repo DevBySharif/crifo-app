@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../core/utils/safe_url.dart';
 import '../../core/api/fotmob_client.dart';
 import '../../core/api/espn_client.dart';
 import '../../core/api/football_data_client.dart';
@@ -585,12 +585,7 @@ class _LeagueNewsTab extends StatelessWidget {
 
         return GestureDetector(
           onTap: () async {
-            if (url.isNotEmpty) {
-              try {
-                final uri = Uri.parse(url.startsWith('http') ? url : 'https://www.fotmob.com$url');
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              } catch (_) {}
-            }
+            await openExternalLink(url, relativeBase: 'https://www.fotmob.com');
           },
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),

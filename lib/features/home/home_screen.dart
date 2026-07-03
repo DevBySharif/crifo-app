@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../core/utils/safe_url.dart';
 import '../../core/api/fotmob_client.dart';
 import '../../core/api/espn_client.dart';
 import '../../core/theme/colors.dart';
@@ -12,7 +12,15 @@ import '../match_detail/match_detail_screen.dart';
 // ── Providers ──────────────────────────────────────────────────────────────────
 final _matchesProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, date) async {
   ref.keepAlive();
-  return FotmobClient.getMatchesByDate(date);
+  final data = await FotmobClient.getMatchesByDate(date);
+  final leagues = data['leagues'];
+  if (leagues is List && leagues.isNotEmpty) return data;
+  // FotMob blocked/empty (e.g. carrier IP) → ESPN fallback so Home still fills.
+  try {
+    final espn = await EspnClient.getScoreboardAsLeagues(date: date);
+    if ((espn['leagues'] as List?)?.isNotEmpty == true) return espn;
+  } catch (_) {}
+  return data;
 });
 
 final _newsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
@@ -430,8 +438,7 @@ class _NewsSlide extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () async {
-        final url = _s(article['url']);
-        if (url.isNotEmpty) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        await openExternalLink(_s(article['url']));
       },
       child: Stack(children: [
         CachedNetworkImage(

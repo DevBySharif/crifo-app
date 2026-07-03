@@ -57,3 +57,11 @@ android/key.properties
 .env
 .env.*
 *.hprof
+
+# Firebase config (contains project keys — keep out of VCS)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# Cloudflare Worker proxy deps
+proxy/node_modules/
+proxy/.wrangler/
