@@ -16,7 +16,10 @@ TVCategory categoryFromString(String s) {
 class TVChannel {
   final String id, name, streamUrl, logoUrl;
   final TVCategory category;
-  const TVChannel({required this.id, required this.name, required this.category, required this.streamUrl, required this.logoUrl});
+  // Server-verified reachability from the Worker's /channels health-check.
+  // true = confirmed reachable this cycle → show the LIVE indicator.
+  final bool live;
+  const TVChannel({required this.id, required this.name, required this.category, required this.streamUrl, required this.logoUrl, this.live = false});
 
   factory TVChannel.fromJson(Map<String, dynamic> j) => TVChannel(
         id: (j['id'] ?? '').toString(),
@@ -24,6 +27,7 @@ class TVChannel {
         category: categoryFromString((j['category'] ?? 'Sports').toString()),
         streamUrl: (j['streamUrl'] ?? j['url'] ?? '').toString(),
         logoUrl: (j['logoUrl'] ?? j['logo'] ?? '').toString(),
+        live: j['live'] == true,
       );
 }
 

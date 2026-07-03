@@ -1,12 +1,17 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:video_player/video_player.dart';
 import '../../core/api/fotmob_client.dart';
 import '../../core/api/tv_channels.dart';
 import '../../core/providers/tv_fullscreen_provider.dart';
+import '../../core/services/remote_channels.dart';
 import '../../core/theme/colors.dart';
 import '../player/player_screen.dart';
 import '../team/team_screen.dart';
+import '../tv/tv_screen.dart' show cleanChannelName;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 Map<String, dynamic> _m(dynamic v) {
@@ -113,16 +118,196 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
   late TabController _tabs;
   final _tabLabels = ['PREVIEW', 'EVENTS', 'STATS', 'LINEUP', 'H2H', 'COMMENTARY', 'PLAYERS'];
 
+  // ── Inline "Watch Live" state ──────────────────────────────────────────
+  // Lets the user pick a live TV channel and watch the match inside this
+  // screen, with the score staying visible above the tabs (FalconCast-style).
+  List<TVChannel> _sportsChannels = [];
+  // Channels FotMob lists as broadcasting THIS specific match, matched to
+  // playable channels in our health-checked list. Shown in the picker first.
+  List<TVChannel> _matchChannels = [];
+  TVChannel? _watchCh;
+  VideoPlayerController? _vpc;
+  bool _watchLoading = false;
+  bool _watchError = false;
+  int _watchToken = 0;
+
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: _tabLabels.length, vsync: this);
+    _loadSportsChannels();
   }
 
   @override
   void dispose() {
     _tabs.dispose();
+    _vpc?.dispose();
+    ref.read(tvFullscreenProvider.notifier).state = null;
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
+  }
+
+  // Pull the health-checked channel list (cached) and keep only sports-type
+  // channels, live-verified ones first.
+  Future<void> _loadSportsChannels() async {
+    try {
+      final all = await loadChannels();
+      final sports = all
+          .where((c) =>
+              c.category == TVCategory.Sports ||
+              c.category == TVCategory.Football ||
+              c.category == TVCategory.Cricket)
+          .map((c) => TVChannel(
+              id: c.id, name: cleanChannelName(c.name), category: c.category,
+              streamUrl: c.streamUrl, logoUrl: c.logoUrl, live: c.live))
+          .toList()
+        ..sort((a, b) {
+          final al = a.live ? 0 : 1, bl = b.live ? 0 : 1;
+          if (al != bl) return al - bl;
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        });
+      if (mounted) setState(() => _sportsChannels = sports);
+    } catch (_) {}
+  }
+
+  // Extract the channels FotMob says are broadcasting THIS match and match them
+  // to playable (health-checked) channels. Runs on build; plain assignment.
+  void _computeMatchChannels(Map<String, dynamic> data) {
+    if (_sportsChannels.isEmpty || _matchChannels.isNotEmpty) return;
+    final content = _m(data['content']);
+    final matchFacts = _m(content['matchFacts']);
+    final raw = _l(matchFacts['tvChannels']).isNotEmpty
+        ? _l(matchFacts['tvChannels']) : _l(matchFacts['broadcasts']).isNotEmpty
+            ? _l(matchFacts['broadcasts']) : _l(data['broadcasts']).isNotEmpty
+                ? _l(data['broadcasts']) : _l(data['tvChannels']);
+
+    final names = <String>[];
+    void collect(dynamic e) {
+      if (e is String) { if (e.trim().isNotEmpty) names.add(e); return; }
+      if (e is Map) {
+        final ch = e['channels'];
+        if (ch is List && ch.isNotEmpty) { for (final c in ch) collect(c); return; }
+        final n = _s(e['name']).isNotEmpty ? _s(e['name']) : _s(e['channelName']);
+        if (n.isNotEmpty) names.add(n);
+      }
+    }
+    for (final e in raw) collect(e);
+
+    final seen = <String>{};
+    final matched = <TVChannel>[];
+    for (final n in names) {
+      final c = _matchPlayable(n, _sportsChannels);
+      if (c != null && seen.add(c.id)) matched.add(c);
+    }
+    matched.sort((a, b) {
+      final al = a.live ? 0 : 1, bl = b.live ? 0 : 1;
+      if (al != bl) return al - bl;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    _matchChannels = matched;
+  }
+
+  // Fuzzy-match a FotMob channel name to a playable channel in [pool].
+  TVChannel? _matchPlayable(String fotmobName, List<TVChannel> pool) {
+    final target = _normChannel(fotmobName);
+    if (target.length < 3) return null;
+    TVChannel? best;
+    var bestLen = 0;
+    for (final c in pool) {
+      final n = _normChannel(c.name);
+      if (n.length < 3) continue;
+      if (n == target) return c;
+      if ((n.contains(target) || target.contains(n)) && n.length > bestLen) {
+        best = c;
+        bestLen = n.length;
+      }
+    }
+    return best;
+  }
+
+  Future<void> _playWatch(TVChannel ch) async {
+    final token = ++_watchToken;
+    final old = _vpc;
+    setState(() {
+      _watchCh = ch;
+      _vpc = null;
+      _watchLoading = true;
+      _watchError = false;
+    });
+    old?.dispose();
+    try {
+      final uri = Uri.parse(ch.streamUrl);
+      final ctrl = VideoPlayerController.networkUrl(uri, httpHeaders: {
+        'User-Agent':
+            'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+        'Accept': '*/*',
+        'Referer': '${uri.scheme}://${uri.host}/',
+      });
+      await ctrl.initialize().timeout(const Duration(seconds: 12));
+      if (token != _watchToken || !mounted) { ctrl.dispose(); return; }
+      ctrl.addListener(() {
+        if (!mounted || token != _watchToken) return;
+        final err = ctrl.value.errorDescription;
+        if (err != null) {
+          setState(() { _watchLoading = false; _watchError = true; });
+        } else if (ctrl.value.isPlaying && _watchLoading) {
+          setState(() => _watchLoading = false);
+        }
+      });
+      await ctrl.setLooping(false);
+      ctrl.play();
+      setState(() { _vpc = ctrl; _watchLoading = false; });
+    } catch (_) {
+      if (token != _watchToken || !mounted) return;
+      setState(() { _watchLoading = false; _watchError = true; });
+    }
+  }
+
+  void _closeWatch() {
+    _watchToken++;
+    ref.read(tvFullscreenProvider.notifier).state = null;
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _vpc?.dispose();
+    setState(() {
+      _watchCh = null;
+      _vpc = null;
+      _watchLoading = false;
+      _watchError = false;
+    });
+  }
+
+  void _watchFullscreen() {
+    final vpc = _vpc;
+    final ch = _watchCh;
+    if (vpc == null || ch == null) return;
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    ref.read(tvFullscreenProvider.notifier).state = _WatchFullscreen(
+      controller: vpc,
+      channelName: ch.name,
+      onExit: () {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        ref.read(tvFullscreenProvider.notifier).state = null;
+      },
+    );
+  }
+
+  void _openChannelPicker() {
+    final hasMatch = _matchChannels.isNotEmpty;
+    final list = hasMatch ? _matchChannels : _sportsChannels;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: context.cBg,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => _ChannelPickerSheet(
+        channels: list,
+        selectedId: _watchCh?.id,
+        matchSpecific: hasMatch,
+        onPick: (ch) { Navigator.pop(context); _playWatch(ch); },
+      ),
+    );
   }
 
   @override
@@ -154,8 +339,16 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
                    : _s(general['parentLeagueName']).isNotEmpty ? _s(general['parentLeagueName'])
                    : _s(_m(header['tournament'])['name']);
 
+    final isLive = status['started'] == true && status['finished'] == false;
+    final watching = _watchCh != null;
+    _computeMatchChannels(data);
+
     return Column(
       children: [
+        if (watching) ...[
+          _buildInlinePlayer(),
+          _buildCompactScore(home, away, status, league),
+        ] else
         Container(
           height: 238 + topPad,
           decoration: const BoxDecoration(
@@ -195,6 +388,7 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
             ],
           ),
         ),
+        if (!watching && isLive) _buildWatchLiveBar(),
         Container(
           decoration: BoxDecoration(
             border: Border(top: BorderSide(color: context.cBorder)),
@@ -226,6 +420,123 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
           ),
         ),
       ],
+    );
+  }
+
+  // ── Inline player (16:9), shown at top while watching ────────────────────
+  Widget _buildInlinePlayer() {
+    final topPad = MediaQuery.of(context).padding.top;
+    return Container(
+      color: Colors.black,
+      padding: EdgeInsets.only(top: topPad),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: _WatchPlayerStack(
+          controller: _vpc,
+          loading: _watchLoading,
+          hasError: _watchError,
+          channelName: _watchCh?.name ?? '',
+          onClose: _closeWatch,
+          onFullscreen: _watchFullscreen,
+          onPickChannel: _openChannelPicker,
+          onRetry: () { if (_watchCh != null) _playWatch(_watchCh!); },
+        ),
+      ),
+    );
+  }
+
+  // Compact score strip shown under the inline player (keeps score visible).
+  Widget _buildCompactScore(Map<String, dynamic> home, Map<String, dynamic> away,
+      Map<String, dynamic> status, String league) {
+    final isLive = status['started'] == true && status['finished'] == false;
+    final score = _s(status['scoreStr']).isNotEmpty ? _s(status['scoreStr']) : 'vs';
+    final minute = _s(_m(status['liveTime'])['short']);
+    Widget team(Map<String, dynamic> t, {required bool right}) {
+      final id = t['id'];
+      final name = _s(t['name']);
+      final logo = Container(
+        width: 24, height: 24,
+        decoration: const BoxDecoration(shape: BoxShape.circle),
+        child: ClipOval(
+          child: id != null
+              ? CachedNetworkImage(imageUrl: FotmobClient.teamLogoUrl(id),
+                  fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => Icon(Icons.sports_soccer, size: 14, color: context.cTextMuted))
+              : Icon(Icons.sports_soccer, size: 14, color: context.cTextMuted),
+        ),
+      );
+      final label = Flexible(
+        child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+          textAlign: right ? TextAlign.right : TextAlign.left,
+          style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+      );
+      return Expanded(
+        child: Row(
+          mainAxisAlignment: right ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: right ? [label, const SizedBox(width: 8), logo] : [logo, const SizedBox(width: 8), label],
+        ),
+      );
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: context.cBgCard,
+        border: Border(bottom: BorderSide(color: context.cBorder)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Row(children: [
+        team(home, right: false),
+        const SizedBox(width: 10),
+        Column(mainAxisSize: MainAxisSize.min, children: [
+          if (isLive)
+            Text('LIVE${minute.isNotEmpty ? ' $minute\'' : ''}',
+              style: const TextStyle(color: AppColors.accentRed, fontSize: 9, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+          Text(score, style: TextStyle(fontFamily: 'Oswald', fontSize: 20, fontWeight: FontWeight.w800, color: context.cTextPrimary)),
+        ]),
+        const SizedBox(width: 10),
+        team(away, right: true),
+      ]),
+    );
+  }
+
+  // "Watch Live" call-to-action for live matches. If FotMob tells us which
+  // channel(s) carry THIS match, we show/play those; otherwise we fall back to
+  // letting the user browse all live sports channels.
+  Widget _buildWatchLiveBar() {
+    final hasMatch = _matchChannels.isNotEmpty;
+    final loading = _sportsChannels.isEmpty;
+    String label;
+    if (loading) {
+      label = 'Loading channels…';
+    } else if (hasMatch) {
+      label = _matchChannels.length == 1
+          ? 'WATCH THIS MATCH  •  ${_matchChannels.first.name}'
+          : 'WATCH THIS MATCH  •  ${_matchChannels.length} channels';
+    } else {
+      label = 'WATCH LIVE  •  Choose a channel';
+    }
+    return GestureDetector(
+      onTap: loading
+          ? null
+          : (hasMatch && _matchChannels.length == 1)
+              ? () => _playWatch(_matchChannels.first)
+              : _openChannelPicker,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 14),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(colors: [AppColors.accentRed, Color(0xFFB4121A)]),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.live_tv_rounded, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: 0.5)),
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.keyboard_arrow_right_rounded, color: Colors.white, size: 18),
+        ]),
+      ),
     );
   }
 }
@@ -504,6 +815,202 @@ TVChannel? findPlayableChannel(String fotmobName) {
     }
   }
   return best;
+}
+
+// ─── Inline watch player (16:9, no rotation) ──────────────────────────────────
+class _WatchPlayerStack extends StatelessWidget {
+  final VideoPlayerController? controller;
+  final bool loading, hasError;
+  final String channelName;
+  final VoidCallback onClose, onFullscreen, onRetry, onPickChannel;
+  const _WatchPlayerStack({
+    required this.controller, required this.loading, required this.hasError,
+    required this.channelName, required this.onClose, required this.onFullscreen,
+    required this.onRetry, required this.onPickChannel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ctrl = controller;
+    return Container(
+      color: Colors.black,
+      child: Stack(children: [
+        if (ctrl != null && ctrl.value.isInitialized)
+          Center(child: AspectRatio(aspectRatio: ctrl.value.aspectRatio, child: VideoPlayer(ctrl)))
+        else
+          const SizedBox.expand(),
+        if (loading)
+          Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(width: 26, height: 26, child: CircularProgressIndicator(color: Color(0xFF00B4FF), strokeWidth: 2.5)),
+            const SizedBox(height: 8),
+            Text(channelName, style: const TextStyle(color: Color(0xFF8888AA), fontSize: 11, fontFamily: 'Inter', fontWeight: FontWeight.w600)),
+          ])),
+        if (hasError || (ctrl != null && ctrl.value.hasError))
+          Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.signal_wifi_off_rounded, color: Color(0xFFFF5555), size: 30),
+            const SizedBox(height: 8),
+            const Text('Stream unavailable', style: TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'Inter', fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              _pill('Change channel', const Color(0xFF333355), onPickChannel),
+              const SizedBox(width: 8),
+              _pill('Retry', const Color(0xFF00B4FF), onRetry),
+            ]),
+          ])),
+        // top controls
+        Positioned(top: 6, left: 6, right: 6, child: Row(children: [
+          _btn(Icons.close_rounded, onClose),
+          const Spacer(),
+          if (channelName.isNotEmpty)
+            Flexible(child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: const Color(0xFF00B4FF).withValues(alpha: 0.9), borderRadius: BorderRadius.circular(10)),
+              child: Text(channelName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700, fontFamily: 'Inter')),
+            )),
+          const Spacer(),
+          _btn(Icons.playlist_play_rounded, onPickChannel),
+          const SizedBox(width: 6),
+          _btn(Icons.fullscreen_rounded, onFullscreen),
+        ])),
+      ]),
+    );
+  }
+
+  Widget _pill(String label, Color color, VoidCallback onTap) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
+      child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700, fontFamily: 'Inter')),
+    ),
+  );
+
+  Widget _btn(IconData icon, VoidCallback onTap) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: 28, height: 28,
+      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15))),
+      child: Icon(icon, color: Colors.white, size: 16),
+    ),
+  );
+}
+
+// Rotated fullscreen page, rendered by MainShell via tvFullscreenProvider.
+class _WatchFullscreen extends StatelessWidget {
+  final VideoPlayerController controller;
+  final String channelName;
+  final VoidCallback onExit;
+  const _WatchFullscreen({required this.controller, required this.channelName, required this.onExit});
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final w = size.shortestSide, h = size.longestSide;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (_, __) => onExit(),
+      child: Material(
+        color: Colors.black,
+        child: SizedBox.expand(child: Center(child: OverflowBox(
+          maxWidth: h, maxHeight: w,
+          child: Transform.rotate(
+            angle: math.pi / 2,
+            child: SizedBox(width: h, height: w, child: Stack(children: [
+              if (controller.value.isInitialized)
+                Center(child: AspectRatio(aspectRatio: controller.value.aspectRatio, child: VideoPlayer(controller))),
+              Positioned(top: 8, left: 8, child: GestureDetector(
+                onTap: onExit,
+                child: Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.15))),
+                  child: const Icon(Icons.fullscreen_exit_rounded, color: Colors.white, size: 18),
+                ),
+              )),
+            ])),
+          ),
+        ))),
+      ),
+    );
+  }
+}
+
+// Bottom-sheet channel picker: live sports channels, live-first, LIVE badge.
+class _ChannelPickerSheet extends StatelessWidget {
+  final List<TVChannel> channels;
+  final String? selectedId;
+  final bool matchSpecific;
+  final void Function(TVChannel) onPick;
+  const _ChannelPickerSheet({required this.channels, required this.selectedId, required this.matchSpecific, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    final liveCount = channels.where((c) => c.live).length;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            margin: const EdgeInsets.only(top: 8, bottom: 4),
+            width: 36, height: 4,
+            decoration: BoxDecoration(color: context.cTextMuted, borderRadius: BorderRadius.circular(2)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(children: [
+              const Icon(Icons.live_tv_rounded, color: AppColors.accentRed, size: 18),
+              const SizedBox(width: 8),
+              Text(matchSpecific ? 'Channels for this match' : 'All live sports channels',
+                style: TextStyle(color: context.cTextPrimary, fontSize: 14, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+              const Spacer(),
+              Text('$liveCount live', style: const TextStyle(color: AppColors.accentGreen, fontSize: 11, fontWeight: FontWeight.w700, fontFamily: 'Inter')),
+            ]),
+          ),
+          Divider(height: 1, color: context.cBorder),
+          Flexible(
+            child: channels.isEmpty
+                ? Padding(padding: const EdgeInsets.all(32),
+                    child: Text('No channels available', style: TextStyle(color: context.cTextMuted)))
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    itemCount: channels.length,
+                    itemBuilder: (_, i) {
+                      final ch = channels[i];
+                      final selected = ch.id == selectedId;
+                      return ListTile(
+                        dense: true,
+                        onTap: () => onPick(ch),
+                        leading: Container(
+                          width: 40, height: 40,
+                          decoration: BoxDecoration(color: context.cBgElevated, borderRadius: BorderRadius.circular(8)),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: ch.logoUrl.isNotEmpty
+                                ? Image.network(ch.logoUrl, fit: BoxFit.contain,
+                                    errorBuilder: (_, __, ___) => Icon(Icons.tv, size: 18, color: context.cTextMuted))
+                                : Icon(Icons.tv, size: 18, color: context.cTextMuted),
+                          ),
+                        ),
+                        title: Text(ch.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: selected ? AppColors.accentBlue : context.cTextPrimary,
+                            fontSize: 13, fontWeight: FontWeight.w600, fontFamily: 'Inter')),
+                        trailing: ch.live
+                            ? Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: AppColors.accentRed, borderRadius: BorderRadius.circular(4)),
+                                child: const Text('LIVE', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800, fontFamily: 'Inter')),
+                              )
+                            : Icon(Icons.play_arrow_rounded, color: context.cTextMuted, size: 20),
+                      );
+                    },
+                  ),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 class _TvChip extends ConsumerWidget {

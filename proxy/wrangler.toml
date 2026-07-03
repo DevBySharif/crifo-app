@@ -1,3 +1,16 @@
 name = "crifo-proxy"
 main = "worker.js"
 compatibility_date = "2024-11-01"
+
+# Rotating channel health-check. Runs every 5 min; each run tests the next
+# batch of streams (see HEALTH_BATCH in worker.js) so the whole list is
+# re-verified over ~2h. ~576 KV writes/day — under the free-plan 1000/day cap.
+[triggers]
+crons = ["*/5 * * * *"]
+
+# KV namespace for the health-check state (base list, per-channel status,
+# rotating cursor). Create with:  wrangler kv namespace create CHANNELS
+# then paste the returned id below.
+[[kv_namespaces]]
+binding = "CHANNELS"
+id = "c6b53ca83e55425b9266ad76872afb08"

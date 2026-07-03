@@ -6,8 +6,15 @@ import '../api/tv_channels.dart';
 /// screen and falls back to the built-in [tvChannels] if it can't be reached.
 ///
 /// Update flow: edit football-eon-web/public/channels.json, commit + push →
-/// Netlify deploys → every app picks up the new list on next TV-tab open.
-const _channelsUrl = 'https://crifo.netlify.app/channels.json';
+/// Netlify deploys → the Cloudflare Worker cron re-pulls it → every app picks
+/// up the new list on next TV-tab open.
+///
+/// This points at the Worker's /channels endpoint (not the raw Netlify file):
+/// the Worker health-checks every stream on a rotating cron, drops dead links,
+/// and returns the list alive-first — so users mostly see channels that play.
+/// The Worker itself falls back to the raw Netlify list on cold start, so this
+/// is always at least as complete as the source file.
+const _channelsUrl = 'https://crifo-proxy.crifo-bd.workers.dev/channels';
 
 List<TVChannel>? _cached;
 

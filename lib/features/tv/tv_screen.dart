@@ -184,7 +184,8 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       .map((c) => TVChannel(id: c.id, name: cleanChannelName(c.name),
           category: c.category, streamUrl: c.streamUrl, logoUrl: c.logoUrl))
       .toList()
-    ..sort((a, b) => _channelSortKey(a).compareTo(_channelSortKey(b)));
+    ..sort((a, b) => _channelSortKey(a, working: a.live ? 0 : 1)
+        .compareTo(_channelSortKey(b, working: b.live ? 0 : 1)));
   Set<String> _workingIds = {};
   bool _checking = false;
 
@@ -203,9 +204,11 @@ class _TVScreenState extends ConsumerState<TVScreen> {
         setState(() {
           _channels = remote
               .map((c) => TVChannel(id: c.id, name: cleanChannelName(c.name),
-                  category: c.category, streamUrl: c.streamUrl, logoUrl: c.logoUrl))
+                  category: c.category, streamUrl: c.streamUrl, logoUrl: c.logoUrl,
+                  live: c.live))
               .toList()
-            ..sort((a, b) => _channelSortKey(a).compareTo(_channelSortKey(b)));
+            ..sort((a, b) => _channelSortKey(a, working: a.live ? 0 : 1)
+                .compareTo(_channelSortKey(b, working: b.live ? 0 : 1)));
         });
       }
     } catch (_) {}
@@ -227,8 +230,8 @@ class _TVScreenState extends ConsumerState<TVScreen> {
     if (!mounted) return;
     final sorted = List<TVChannel>.from(_channels)
       ..sort((a, b) {
-        final aW = working.contains(a.id) ? 0 : 1;
-        final bW = working.contains(b.id) ? 0 : 1;
+        final aW = (working.contains(a.id) || a.live) ? 0 : 1;
+        final bW = (working.contains(b.id) || b.live) ? 0 : 1;
         return _channelSortKey(a, working: aW)
             .compareTo(_channelSortKey(b, working: bW));
       });
@@ -246,6 +249,10 @@ class _TVScreenState extends ConsumerState<TVScreen> {
     final ch = _channels.where((c) => c.id == channelId).toList();
     if (ch.isNotEmpty) _play(ch.first);
   }
+
+  // Live = server-verified reachable this cycle, or confirmed by client check.
+  int get _liveCount =>
+      _channels.where((c) => c.live || _workingIds.contains(c.id)).length;
 
   List<TVChannel> get _filtered => _channels.where((c) {
         if (_cat != null && c.category != _cat) return false;
@@ -414,7 +421,7 @@ class _TVScreenState extends ConsumerState<TVScreen> {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFF00B4FF).withValues(alpha: 0.3)),
                   ),
-                  child: Text('${_workingIds.length} live', style: const TextStyle(
+                  child: Text('$_liveCount live', style: const TextStyle(
                     color: Color(0xFF00B4FF), fontSize: 10,
                     fontWeight: FontWeight.w700, fontFamily: 'Inter',
                   )),
@@ -572,7 +579,7 @@ class _TVScreenState extends ConsumerState<TVScreen> {
                 itemBuilder: (ctx, i) {
                   final ch = list[i];
                   final isActive = _playing?.id == ch.id;
-                  final isWorking = _workingIds.contains(ch.id);
+                  final isWorking = ch.live || _workingIds.contains(ch.id);
                   return GestureDetector(
                     onTap: () => _play(ch),
                     child: AnimatedContainer(
@@ -622,6 +629,8 @@ class _TVScreenState extends ConsumerState<TVScreen> {
                             ],
                           ),
                           if (isWorking && !isActive)
+                            const Positioned(top: 4, left: 4, child: _LiveBadge()),
+                          if (isWorking && !isActive)
                             Positioned(
                               top: 4, right: 4,
                               child: Container(
@@ -664,7 +673,7 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       itemBuilder: (_, i) {
         final ch = channels[i];
         final isActive = _playing?.id == ch.id;
-        final isWorking = _workingIds.contains(ch.id);
+        final isWorking = ch.live || _workingIds.contains(ch.id);
         return GestureDetector(
           onTap: () => _play(ch),
           child: AnimatedContainer(
@@ -702,6 +711,8 @@ class _TVScreenState extends ConsumerState<TVScreen> {
                     )),
                 ),
               ]),
+              if (isWorking && !isActive)
+                const Positioned(top: 5, left: 5, child: _LiveBadge()),
               if (isWorking && !isActive)
                 Positioned(top: 5, right: 5,
                   child: Container(width: 6, height: 6,
@@ -916,6 +927,41 @@ class _PlayerStack extends StatelessWidget {
             ),
           ]),
         ),
+      ]),
+    );
+  }
+}
+
+// Compact red "● LIVE" badge shown on channels confirmed reachable.
+class _LiveBadge extends StatelessWidget {
+  const _LiveBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE21B22),
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFE21B22).withValues(alpha: 0.5),
+            blurRadius: 4,
+          ),
+        ],
+      ),
+      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(
+          width: 3.5, height: 3.5,
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+          ),
+        ),
+        SizedBox(width: 3),
+        Text('LIVE', style: TextStyle(
+          color: Colors.white, fontSize: 6.5, height: 1,
+          fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: 0.3,
+        )),
       ]),
     );
   }
