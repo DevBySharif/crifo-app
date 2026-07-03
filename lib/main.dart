@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/colors.dart';
 import 'core/theme/theme_provider.dart';
 import 'core/providers/tv_fullscreen_provider.dart';
+import 'core/services/update_checker.dart';
 import 'features/home/home_screen.dart';
 import 'features/scores/scores_screen.dart';
 import 'features/tv/tv_screen.dart';
@@ -68,6 +70,61 @@ class _MainShellState extends ConsumerState<MainShell> {
     TVScreen(),
     SearchScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // A moment after first paint, ask the website if a newer build exists.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(seconds: 2));
+      final update = await checkForUpdate();
+      if (update != null && mounted) _showUpdateDialog(update);
+    });
+  }
+
+  void _showUpdateDialog(AppUpdate u) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: ctx.cBgCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          const Icon(Icons.system_update_rounded, color: AppColors.accentPrimary, size: 22),
+          const SizedBox(width: 10),
+          Text('Update available', style: TextStyle(color: ctx.cTextPrimary, fontSize: 17, fontWeight: FontWeight.w700)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Version ${u.versionName} is ready.',
+              style: TextStyle(color: ctx.cTextSecondary, fontSize: 13)),
+          if (u.releaseNotes.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(u.releaseNotes, style: TextStyle(color: ctx.cTextMuted, fontSize: 12, height: 1.4)),
+          ],
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Later', style: TextStyle(color: ctx.cTextMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accentPrimary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final uri = Uri.tryParse(u.apkUrl);
+              if (uri != null) {
+                try { await launchUrl(uri, mode: LaunchMode.externalApplication); } catch (_) {}
+              }
+            },
+            child: const Text('Update', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _onTap(int i) {
     if (i == _index) return;
