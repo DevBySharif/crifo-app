@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import '../../core/api/tv_channels.dart';
+import '../../core/services/remote_channels.dart';
 import '../../core/theme/colors.dart';
 import '../../core/providers/tv_fullscreen_provider.dart';
 
@@ -190,7 +191,25 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   @override
   void initState() {
     super.initState();
-    _runChannelCheck();
+    _loadRemoteThenCheck();
+  }
+
+  // Pull the latest channel list from the server (so channels can change with
+  // no app update), then health-check them. Falls back to the built-in list.
+  Future<void> _loadRemoteThenCheck() async {
+    try {
+      final remote = await loadChannels();
+      if (mounted && remote.isNotEmpty) {
+        setState(() {
+          _channels = remote
+              .map((c) => TVChannel(id: c.id, name: cleanChannelName(c.name),
+                  category: c.category, streamUrl: c.streamUrl, logoUrl: c.logoUrl))
+              .toList()
+            ..sort((a, b) => _channelSortKey(a).compareTo(_channelSortKey(b)));
+        });
+      }
+    } catch (_) {}
+    await _runChannelCheck();
   }
 
   @override

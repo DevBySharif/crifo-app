@@ -2,10 +2,29 @@
 
 enum TVCategory { Sports, Cricket, Football, Bangla, News, Entertainment }
 
+TVCategory categoryFromString(String s) {
+  switch (s.toLowerCase()) {
+    case 'cricket': return TVCategory.Cricket;
+    case 'football': return TVCategory.Football;
+    case 'bangla': return TVCategory.Bangla;
+    case 'news': return TVCategory.News;
+    case 'entertainment': return TVCategory.Entertainment;
+    default: return TVCategory.Sports;
+  }
+}
+
 class TVChannel {
   final String id, name, streamUrl, logoUrl;
   final TVCategory category;
   const TVChannel({required this.id, required this.name, required this.category, required this.streamUrl, required this.logoUrl});
+
+  factory TVChannel.fromJson(Map<String, dynamic> j) => TVChannel(
+        id: (j['id'] ?? '').toString(),
+        name: (j['name'] ?? '').toString(),
+        category: categoryFromString((j['category'] ?? 'Sports').toString()),
+        streamUrl: (j['streamUrl'] ?? j['url'] ?? '').toString(),
+        logoUrl: (j['logoUrl'] ?? j['logo'] ?? '').toString(),
+      );
 }
 
 const List<TVChannel> tvChannels = [
