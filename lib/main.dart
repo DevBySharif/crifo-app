@@ -17,6 +17,11 @@ import 'features/search/search_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  // Lock the app to portrait. Video fullscreen fakes landscape with a 90°
+  // Transform.rotate, which assumes the underlying app never rotates —
+  // without this lock, turning the phone rotated the whole app AND the
+  // rotated player, breaking fullscreen completely.
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,

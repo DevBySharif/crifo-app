@@ -276,19 +276,27 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
     });
   }
 
-  void _watchFullscreen() {
+  // Fullscreen must be pushed as a route: MatchDetailScreen itself sits on a
+  // pushed route above MainShell, so MainShell's tvFullscreenProvider overlay
+  // would render BELOW this screen and never be visible.
+  bool _fsOpen = false;
+  Future<void> _watchFullscreen() async {
     final vpc = _vpc;
     final ch = _watchCh;
-    if (vpc == null || ch == null) return;
+    if (vpc == null || ch == null || _fsOpen) return;
+    _fsOpen = true;
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    ref.read(tvFullscreenProvider.notifier).state = _WatchFullscreen(
-      controller: vpc,
-      channelName: ch.name,
-      onExit: () {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-        ref.read(tvFullscreenProvider.notifier).state = null;
-      },
-    );
+    await Navigator.of(context).push(PageRouteBuilder(
+      opaque: true,
+      pageBuilder: (_, __, ___) => _WatchFullscreen(
+        controller: vpc,
+        channelName: ch.name,
+        onExit: () => Navigator.of(context).maybePop(),
+      ),
+    ));
+    // Runs on any exit path (button, back gesture).
+    _fsOpen = false;
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
   void _openChannelPicker() {
@@ -908,10 +916,9 @@ class _WatchFullscreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final w = size.shortestSide, h = size.longestSide;
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (_, __) => onExit(),
-      child: Material(
+    // Rendered as a pushed route — the system back gesture pops it natively,
+    // so no PopScope is needed (the pusher restores UI mode after the pop).
+    return Material(
         color: Colors.black,
         child: SizedBox.expand(child: Center(child: OverflowBox(
           maxWidth: h, maxHeight: w,
@@ -932,7 +939,6 @@ class _WatchFullscreen extends StatelessWidget {
             ])),
           ),
         ))),
-      ),
     );
   }
 }

@@ -71,13 +71,19 @@ class _ScoresScreenState extends ConsumerState<ScoresScreen> {
   }
 
   void _scrollDateToCenter() {
-    if (_dateScrollCtrl.hasClients) {
-      _dateScrollCtrl.animateTo(
-        3 * 58.0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
+    if (!_dateScrollCtrl.hasClients) return;
+    // Item extent = width 46 + horizontal margin 3*2; today sits at index 7
+    // (built as now + (i-7) days). Center it in the viewport.
+    const itemExtent = 52.0;
+    const todayIndex = 7;
+    const leftPad = 12.0;
+    final viewport = _dateScrollCtrl.position.viewportDimension;
+    final target = (todayIndex * itemExtent) + leftPad + (itemExtent / 2) - (viewport / 2);
+    _dateScrollCtrl.animateTo(
+      target.clamp(0.0, _dateScrollCtrl.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
