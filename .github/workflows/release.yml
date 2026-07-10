@@ -35,13 +35,10 @@ jobs:
       - name: Build APK
         run: flutter build apk --release
 
-      - name: Rename APK
-        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/crifo.apk
-
       - name: Create GitHub Release and Upload APK
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/crifo.apk
+          files: build/app/outputs/flutter-apk/app-release.apk
           name: CriFO ${{ github.ref_name }}
           body: |
             Release of CriFO ${{ github.ref_name }}
