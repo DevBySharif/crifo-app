@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/api/tv_channels.dart';
 import '../../core/services/remote_channels.dart';
 import '../../core/theme/colors.dart';
@@ -189,6 +190,17 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   Set<String> _workingIds = {};
   bool _checking = false;
 
+  // --- TV Source Toggle ---
+  bool _useDudeServer = false;
+
+  // --- DUDE TV State ---
+  List<DudeCategory> _dudeCategories = [];
+  DudeCategory? _selectedDudeCategory;
+  List<DudeChannel> _dudeChannels = [];
+  bool _dudeLoading = false;
+  bool _dudeError = false;
+  final Map<String, List<DudeChannel>> _dudeChannelsCache = {};
+
   @override
   void initState() {
     super.initState();
@@ -240,6 +252,403 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       _channels = sorted;
       _checking = false;
     });
+  }
+
+  // ─── Dude TV Backend Systems ────────────────────────────────────────────────
+
+  void _toggleServer(bool useDude) {
+    if (useDude == _useDudeServer) return;
+    setState(() {
+      _useDudeServer = useDude;
+    });
+    if (useDude && _dudeCategories.isEmpty) {
+      _fetchDudeCategories();
+    }
+  }
+
+  Future<void> _fetchDudeCategories() async {
+    if (!mounted) return;
+    setState(() {
+      _dudeLoading = true;
+      _dudeError = false;
+    });
+    try {
+      final res = await Dio().get(
+        'https://mdjamsad9.github.io/dudetvapi/public_decrypted/cats.json',
+        options: Options(responseType: ResponseType.json),
+      );
+      final list = res.data;
+      if (list is List) {
+        final parsed = list
+            .map((e) => DudeCategory.fromJson(e as Map<String, dynamic>))
+            .toList();
+
+        parsed.removeWhere((c) => c.title.isEmpty || c.catLink.isEmpty);
+
+        if (mounted) {
+          setState(() {
+            _dudeCategories = parsed;
+            if (parsed.isNotEmpty) {
+              _selectedDudeCategory = parsed.first;
+            }
+          });
+          if (_selectedDudeCategory != null) {
+            await _fetchDudeChannelsForCategory(_selectedDudeCategory!);
+          }
+        }
+
+        _preloadCategoryCounts(parsed);
+      } else {
+        if (mounted) setState(() => _dudeError = true);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _dudeError = true);
+    } finally {
+      if (mounted) setState(() => _dudeLoading = false);
+    }
+  }
+
+  Future<void> _fetchDudeChannelsForCategory(DudeCategory cat) async {
+    final link = cat.catLink;
+    if (_dudeChannelsCache.containsKey(link)) {
+      setState(() {
+        _dudeChannels = _dudeChannelsCache[link]!;
+      });
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _dudeLoading = true);
+    try {
+      List<DudeChannel> parsedChannels = [];
+
+      if (link == 'Sports') {
+        final res = await Dio().get(
+          'https://mdjamsad9.github.io/dudetvapi/public_decrypted/sports.json',
+          options: Options(responseType: ResponseType.json),
+        );
+        if (res.data is List) {
+          parsedChannels = (res.data as List)
+              .map((e) => DudeChannel.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      } else if (link.startsWith('http') || link.endsWith('.m3u')) {
+        final res = await Dio().get(
+          link,
+          options: Options(responseType: ResponseType.plain),
+        );
+        parsedChannels = parseM3U(res.data.toString(), cat.title);
+      } else if (link.endsWith('.json')) {
+        final res = await Dio().get(
+          'https://mdjamsad9.github.io/dudetvapi/public_decrypted/$link',
+          options: Options(responseType: ResponseType.json),
+        );
+        if (res.data is List) {
+          parsedChannels = (res.data as List)
+              .map((e) => DudeChannel.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      } else {
+        final res = await Dio()
+            .get(
+              'https://mdjamsad9.github.io/dudetvapi/public_decrypted/cats/${link.toLowerCase()}.json',
+              options: Options(responseType: ResponseType.json),
+            )
+            .catchError((_) => Dio().get(
+                  'https://mdjamsad9.github.io/dudetvapi/public_decrypted/$link.json',
+                  options: Options(responseType: ResponseType.json),
+                ));
+        if (res.data is List) {
+          parsedChannels = (res.data as List)
+              .map((e) => DudeChannel.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _dudeChannelsCache[link] = parsedChannels;
+          _dudeChannels = parsedChannels;
+          cat.channelCount = parsedChannels.length;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _dudeChannels = [];
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _dudeLoading = false);
+    }
+  }
+
+  Future<void> _preloadCategoryCounts(List<DudeCategory> categories) async {
+    for (final cat in categories) {
+      if (cat.id == _selectedDudeCategory?.id) continue;
+      try {
+        final link = cat.catLink;
+        List<DudeChannel> channels = [];
+        if (link == 'Sports') {
+          final res = await Dio().get(
+            'https://mdjamsad9.github.io/dudetvapi/public_decrypted/sports.json',
+            options: Options(responseType: ResponseType.json),
+          );
+          if (res.data is List) {
+            channels = (res.data as List)
+                .map((e) => DudeChannel.fromJson(e as Map<String, dynamic>))
+                .toList();
+          }
+        } else if (link.startsWith('http') || link.endsWith('.m3u')) {
+          final res = await Dio().get(
+            link,
+            options: Options(responseType: ResponseType.plain),
+          );
+          channels = parseM3U(res.data.toString(), cat.title);
+        } else if (link.endsWith('.json')) {
+          final res = await Dio().get(
+            'https://mdjamsad9.github.io/dudetvapi/public_decrypted/$link',
+            options: Options(responseType: ResponseType.json),
+          );
+          if (res.data is List) {
+            channels = (res.data as List)
+                .map((e) => DudeChannel.fromJson(e as Map<String, dynamic>))
+                .toList();
+          }
+        } else {
+          final res = await Dio()
+              .get(
+                'https://mdjamsad9.github.io/dudetvapi/public_decrypted/cats/${link.toLowerCase()}.json',
+                options: Options(responseType: ResponseType.json),
+              )
+              .catchError((_) => Dio().get(
+                    'https://mdjamsad9.github.io/dudetvapi/public_decrypted/$link.json',
+                    options: Options(responseType: ResponseType.json),
+                  ));
+          if (res.data is List) {
+            channels = (res.data as List)
+                .map((e) => DudeChannel.fromJson(e as Map<String, dynamic>))
+                .toList();
+          }
+        }
+        if (mounted) {
+          setState(() {
+            cat.channelCount = channels.length;
+            _dudeChannelsCache[link] = channels;
+          });
+        }
+      } catch (_) {}
+    }
+  }
+
+  void _showDudeSubChannelsSheet(DudeChannel ch) {
+    if (ch.directUrl != null) {
+      final tvCh = TVChannel(
+        id: ch.id,
+        name: ch.title,
+        category: categoryFromString(ch.category),
+        streamUrl: ch.directUrl!,
+        logoUrl: ch.image,
+      );
+      _play(tvCh);
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: context.cBgCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: context.cBorder,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                ch.title.toUpperCase(),
+                style: TextStyle(
+                  color: context.cTextPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Inter',
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: ch.formatsNew.length,
+                  itemBuilder: (subCtx, subIdx) {
+                    final fmt = ch.formatsNew[subIdx];
+                    return Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        color: context.cBgElevated,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: context.cBorder, width: 0.8),
+                      ),
+                      child: ListTile(
+                        leading: Container(
+                          width: 32,
+                          height: 32,
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Center(
+                            child: fmt.logo.isNotEmpty
+                                ? CachedNetworkImage(
+                                    imageUrl: fmt.logo,
+                                    fit: BoxFit.contain,
+                                    errorWidget: (_, __, ___) => const Icon(
+                                        Icons.tv_rounded,
+                                        size: 16,
+                                        color: Color(0xFF00B4FF)),
+                                  )
+                                : const Icon(Icons.tv_rounded,
+                                    size: 16, color: Color(0xFF00B4FF)),
+                          ),
+                        ),
+                        title: Text(
+                          fmt.title,
+                          style: TextStyle(
+                            color: context.cTextPrimary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                        trailing: const Icon(Icons.play_circle_fill_rounded,
+                            color: Color(0xFF00B4FF), size: 24),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _resolveAndPlayDudeChannel(ch, fmt);
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _resolveAndPlayDudeChannel(DudeChannel ch, DudeFormat fmt) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (loadingCtx) => Center(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: context.cBgCard,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: context.cBorder),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Color(0xFF00B4FF)),
+              SizedBox(height: 12),
+              Text(
+                'Resolving Stream...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Inter',
+                  decoration: TextDecoration.none,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final res = await Dio().get(
+        'https://mdjamsad9.github.io/dudetvapi/public_decrypted/channels/${ch.id}.json',
+        options: Options(responseType: ResponseType.json),
+      );
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      if (res.data is List) {
+        final streams = (res.data as List)
+            .map((e) => DudeStream.fromJson(e as Map<String, dynamic>))
+            .toList();
+
+        final matched = streams
+            .where((s) => s.title.toLowerCase() == fmt.title.toLowerCase())
+            .toList();
+        if (matched.isNotEmpty) {
+          final tvCh = TVChannel(
+            id: '${ch.id}_${matched.first.title}',
+            name: '${ch.title} - ${matched.first.title}',
+            category: categoryFromString(ch.category),
+            streamUrl: matched.first.link,
+            logoUrl: ch.image,
+          );
+          _play(tvCh);
+        } else if (streams.isNotEmpty) {
+          final tvCh = TVChannel(
+            id: '${ch.id}_${streams.first.title}',
+            name: '${ch.title} - ${streams.first.title}',
+            category: categoryFromString(ch.category),
+            streamUrl: streams.first.link,
+            logoUrl: ch.image,
+          );
+          _play(tvCh);
+        } else {
+          _showErrorSnackBar('No links available for this channel.');
+        }
+      } else {
+        _showErrorSnackBar('Failed to resolve channel stream.');
+      }
+    } catch (_) {
+      if (mounted) {
+        Navigator.pop(context);
+      }
+      _showErrorSnackBar('Connection failed. Please try again.');
+    }
+  }
+
+  void _showErrorSnackBar(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
+          style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: const Color(0xFFEF4444),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   // Handle play requests coming from other screens (match "Where to watch")
@@ -353,6 +762,313 @@ class _TVScreenState extends ConsumerState<TVScreen> {
     if (mounted) setState(() => _fullscreen = false);
   }
 
+  // ─── Dude TV UI Elements ────────────────────────────────────────────────────
+
+  Widget _buildServerToggle() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: context.cBgCard,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: context.cBorder),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _toggleServer(false),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  gradient: !_useDudeServer ? AppColors.primaryGradient : null,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Center(
+                  child: Text(
+                    'CriFO Server',
+                    style: TextStyle(
+                      color: !_useDudeServer ? Colors.white : context.cTextSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Inter',
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _toggleServer(true),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  gradient: _useDudeServer ? AppColors.primaryGradient : null,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Center(
+                  child: Text(
+                    'Dude Server',
+                    style: TextStyle(
+                      color: _useDudeServer ? Colors.white : context.cTextSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Inter',
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDudeCategories() {
+    if (_dudeCategories.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 75,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        itemCount: _dudeCategories.length,
+        itemBuilder: (ctx, idx) {
+          final cat = _dudeCategories[idx];
+          final isActive = _selectedDudeCategory?.id == cat.id;
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedDudeCategory = cat;
+              });
+              _fetchDudeChannelsForCategory(cat);
+            },
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: isActive ? Colors.transparent : context.cBgCard,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isActive ? const Color(0xFF00B4FF) : context.cBorder,
+                            width: isActive ? 2 : 1.2,
+                          ),
+                          boxShadow: isActive
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFF00B4FF).withValues(alpha: 0.3),
+                                    blurRadius: 8,
+                                    spreadRadius: 1,
+                                  )
+                                ]
+                              : null,
+                        ),
+                        child: ClipOval(
+                          child: Padding(
+                            padding: const EdgeInsets.all(6.0),
+                            child: cat.image.isNotEmpty && cat.image != 'nullbsbbs'
+                                ? CachedNetworkImage(
+                                    imageUrl: cat.image,
+                                    fit: BoxFit.contain,
+                                    placeholder: (_, __) => _categoryFallback(cat.title),
+                                    errorWidget: (_, __, ___) => _categoryFallback(cat.title),
+                                  )
+                                : _categoryFallback(cat.title),
+                          ),
+                        ),
+                      ),
+                      if (cat.channelCount > 0)
+                        Positioned(
+                          top: -3,
+                          right: -3,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFFF2D55),
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${cat.channelCount}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 7.5,
+                                  fontWeight: FontWeight.w800,
+                                  fontFamily: 'Inter',
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    cat.title.toUpperCase(),
+                    style: TextStyle(
+                      color: isActive ? const Color(0xFF00B4FF) : context.cTextSecondary,
+                      fontSize: 8.5,
+                      fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+                      fontFamily: 'Inter',
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _categoryFallback(String title) {
+    return Center(
+      child: Text(
+        title.isNotEmpty ? title[0].toUpperCase() : 'T',
+        style: const TextStyle(
+          color: Color(0xFF00B4FF),
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+          fontFamily: 'Inter',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDudeGrid() {
+    if (_dudeLoading && _dudeChannels.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF00B4FF)),
+      );
+    }
+    if (_dudeError && _dudeChannels.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.wifi_off_rounded, size: 40, color: context.cTextMuted),
+            const SizedBox(height: 8),
+            Text(
+              'Failed to load channels',
+              style: TextStyle(color: context.cTextSecondary, fontSize: 13, fontFamily: 'Inter'),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => _fetchDudeCategories(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00B4FF),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: const Text('Retry', style: TextStyle(color: Colors.white, fontSize: 11)),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_dudeChannels.isEmpty) {
+      return Center(
+        child: Text(
+          'No channels available',
+          style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter'),
+        ),
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        childAspectRatio: 0.76,
+        crossAxisSpacing: 6,
+        mainAxisSpacing: 6,
+      ),
+      itemCount: _dudeChannels.length,
+      itemBuilder: (ctx, idx) {
+        final ch = _dudeChannels[idx];
+        return GestureDetector(
+          onTap: () => _showDudeSubChannelsSheet(ch),
+          child: Container(
+            decoration: BoxDecoration(
+              color: context.cBgCard,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: context.cBorder, width: 0.8),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.fromLTRB(6, 6, 6, 4),
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: ch.image.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: ch.image,
+                              fit: BoxFit.contain,
+                              placeholder: (_, __) => const SizedBox.shrink(),
+                              errorWidget: (_, __, ___) => _channelTextLogo(ch.title),
+                            )
+                          : _channelTextLogo(ch.title),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+                  child: Text(
+                    ch.title,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: context.cTextPrimary,
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _channelTextLogo(String title) {
+    return Text(
+      title.isNotEmpty ? title[0].toUpperCase() : 'C',
+      style: const TextStyle(
+        color: Color(0xFF00B4FF),
+        fontSize: 22,
+        fontWeight: FontWeight.w900,
+        fontFamily: 'Inter',
+      ),
+    );
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
@@ -376,8 +1092,15 @@ class _TVScreenState extends ConsumerState<TVScreen> {
             children: [
               if (_playing != null && !_fullscreen) _buildMiniPlayer(),
               _buildHeader(),
-              _buildPills(),
-              Expanded(child: _buildGrid()),
+              _buildServerToggle(),
+              if (_useDudeServer) ...[
+                _buildDudeCategories(),
+                const SizedBox(height: 4),
+                Expanded(child: _buildDudeGrid()),
+              ] else ...[
+                _buildPills(),
+                Expanded(child: _buildGrid()),
+              ],
             ],
           ),
         ),
@@ -411,45 +1134,76 @@ class _TVScreenState extends ConsumerState<TVScreen> {
             fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: 1,
           )),
           const SizedBox(width: 6),
-          _checking
-              ? const SizedBox(width: 10, height: 10,
-                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF00B4FF)))
-              : Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF00B4FF).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF00B4FF).withValues(alpha: 0.3)),
+          if (!_useDudeServer)
+            _checking
+                ? const SizedBox(width: 10, height: 10,
+                    child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF00B4FF)))
+                : Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00B4FF).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF00B4FF).withValues(alpha: 0.3)),
+                    ),
+                    child: Text('$_liveCount live', style: const TextStyle(
+                      color: Color(0xFF00B4FF), fontSize: 10,
+                      fontWeight: FontWeight.w700, fontFamily: 'Inter',
+                    )),
                   ),
-                  child: Text('$_liveCount live', style: const TextStyle(
-                    color: Color(0xFF00B4FF), fontSize: 10,
-                    fontWeight: FontWeight.w700, fontFamily: 'Inter',
-                  )),
-                ),
+          if (_useDudeServer)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00B4FF).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF00B4FF).withValues(alpha: 0.3)),
+              ),
+              child: const Text('DUDE', style: TextStyle(
+                color: Color(0xFF00B4FF), fontSize: 10,
+                fontWeight: FontWeight.w700, fontFamily: 'Inter',
+              )),
+            ),
           const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _searchCtrl,
-              onChanged: (v) => setState(() => _query = v),
-              style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontFamily: 'Inter'),
-              decoration: InputDecoration(
-                hintText: 'Search channels...',
-                hintStyle: TextStyle(color: context.cTextMuted, fontSize: 12),
-                prefixIcon: Icon(Icons.search_rounded, color: context.cTextMuted, size: 18),
-                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                filled: true,
-                fillColor: context.cBgInput,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: context.cBorder)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: context.cBorder)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFF00B4FF), width: 1.2)),
+          if (!_useDudeServer)
+            Expanded(
+              child: TextField(
+                controller: _searchCtrl,
+                onChanged: (v) => setState(() => _query = v),
+                style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontFamily: 'Inter'),
+                decoration: InputDecoration(
+                  hintText: 'Search channels...',
+                  hintStyle: TextStyle(color: context.cTextMuted, fontSize: 12),
+                  prefixIcon: Icon(Icons.search_rounded, color: context.cTextMuted, size: 18),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  filled: true,
+                  fillColor: context.cBgInput,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: context.cBorder)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: context.cBorder)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFF00B4FF), width: 1.2)),
+                ),
               ),
             ),
-          ),
+          if (_useDudeServer)
+            Expanded(
+              child: Text(
+                _selectedDudeCategory != null
+                    ? _selectedDudeCategory!.title.toUpperCase()
+                    : 'Loading...',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: context.cTextSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Inter',
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
         ],
       ),
     );

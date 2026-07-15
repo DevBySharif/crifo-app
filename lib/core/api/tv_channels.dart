@@ -1,4 +1,118 @@
-﻿// Auto-generated from tvSources.ts
+// ─── Dude TV Models ─────────────────────────────────────────────────────────
+
+class DudeCategory {
+  final String id, title, image, catLink;
+  int channelCount;
+
+  DudeCategory({
+    required this.id,
+    required this.title,
+    required this.image,
+    required this.catLink,
+    this.channelCount = 0,
+  });
+
+  factory DudeCategory.fromJson(Map<String, dynamic> json) => DudeCategory(
+        id: (json['id'] ?? '').toString(),
+        title: (json['title'] ?? '').toString(),
+        image: (json['image'] ?? '').toString(),
+        catLink: (json['catLink'] ?? '').toString(),
+      );
+}
+
+class DudeFormat {
+  final String title, logo;
+
+  DudeFormat({required this.title, required this.logo});
+
+  factory DudeFormat.fromJson(Map<String, dynamic> json) => DudeFormat(
+        title: (json['title'] ?? '').toString(),
+        logo: (json['logo'] ?? '').toString(),
+      );
+}
+
+class DudeChannel {
+  final String id, title, image, category;
+  final List<DudeFormat> formatsNew;
+  final String? directUrl;
+
+  DudeChannel({
+    required this.id,
+    required this.title,
+    required this.image,
+    required this.category,
+    required this.formatsNew,
+    this.directUrl,
+  });
+
+  factory DudeChannel.fromJson(Map<String, dynamic> json) {
+    final formatsRaw = json['formatsNew'] as List? ?? [];
+    return DudeChannel(
+      id: (json['id'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      image: (json['image'] ?? '').toString(),
+      category: (json['cat'] ?? '').toString(),
+      formatsNew: formatsRaw
+          .map((e) => DudeFormat.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class DudeStream {
+  final String api, link, title, type;
+
+  DudeStream({
+    required this.api,
+    required this.link,
+    required this.title,
+    required this.type,
+  });
+
+  factory DudeStream.fromJson(Map<String, dynamic> json) => DudeStream(
+        api: (json['api'] ?? '').toString(),
+        link: (json['link'] ?? '').toString(),
+        title: (json['title'] ?? '').toString(),
+        type: (json['type'] ?? '').toString(),
+      );
+}
+
+List<DudeChannel> parseM3U(String content, String categoryName) {
+  final channels = <DudeChannel>[];
+  final lines = content.split('\n');
+  String currentTitle = '';
+  String currentLogo = '';
+
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i].trim();
+    if (line.startsWith('#EXTINF:')) {
+      final logoMatch = RegExp(r'tvg-logo="([^"]+)"').firstMatch(line);
+      currentLogo = logoMatch?.group(1) ?? '';
+
+      final commaIdx = line.lastIndexOf(',');
+      if (commaIdx != -1) {
+        currentTitle = line.substring(commaIdx + 1).trim();
+      } else {
+        currentTitle = 'Channel';
+      }
+    } else if (line.isNotEmpty && !line.startsWith('#')) {
+      if (currentTitle.isEmpty) currentTitle = 'Stream';
+      channels.add(DudeChannel(
+        id: line.hashCode.toString(),
+        title: currentTitle,
+        image: currentLogo,
+        category: categoryName,
+        formatsNew: [
+          DudeFormat(title: 'Server 1', logo: currentLogo),
+        ],
+        directUrl: line,
+      ));
+      currentTitle = '';
+      currentLogo = '';
+    }
+  }
+  return channels;
+}
 
 enum TVCategory { Sports, Cricket, Football, Bangla, News, Entertainment }
 
