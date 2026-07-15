@@ -190,9 +190,6 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   Set<String> _workingIds = {};
   bool _checking = false;
 
-  // --- TV Source Toggle ---
-  bool _useDudeServer = false;
-
   // --- DUDE TV State ---
   List<DudeCategory> _dudeCategories = [];
   DudeCategory? _selectedDudeCategory;
@@ -200,11 +197,16 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   bool _dudeLoading = false;
   bool _dudeError = false;
   final Map<String, List<DudeChannel>> _dudeChannelsCache = {};
+  List<DudeChannel> _allDudeChannels = []; // all loaded dude channels merged
+
+  // unified category: null = All, TVCategory = crifo cat, String = dude cat id
+  Object? _selectedCatKey; // null | TVCategory | String(DudeCategory.id)
 
   @override
   void initState() {
     super.initState();
     _loadRemoteThenCheck();
+    _fetchDudeCategories(); // auto-load DUDE channels on start
   }
 
   // Pull the latest channel list from the server (so channels can change with
@@ -255,16 +257,6 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   }
 
   // ─── Dude TV Backend Systems ────────────────────────────────────────────────
-
-  void _toggleServer(bool useDude) {
-    if (useDude == _useDudeServer) return;
-    setState(() {
-      _useDudeServer = useDude;
-    });
-    if (useDude && _dudeCategories.isEmpty) {
-      _fetchDudeCategories();
-    }
-  }
 
   Future<void> _fetchDudeCategories() async {
     if (!mounted) return;
@@ -370,6 +362,10 @@ class _TVScreenState extends ConsumerState<TVScreen> {
           _dudeChannelsCache[link] = parsedChannels;
           _dudeChannels = parsedChannels;
           cat.channelCount = parsedChannels.length;
+          // merge into allDudeChannels (avoid duplicates by id)
+          final existingIds = _allDudeChannels.map((c) => c.id).toSet();
+          final newOnes = parsedChannels.where((c) => !existingIds.contains(c.id)).toList();
+          _allDudeChannels = [..._allDudeChannels, ...newOnes];
         });
       }
     } catch (_) {
@@ -435,6 +431,10 @@ class _TVScreenState extends ConsumerState<TVScreen> {
           setState(() {
             cat.channelCount = channels.length;
             _dudeChannelsCache[link] = channels;
+            // merge into allDudeChannels
+            final existingIds = _allDudeChannels.map((c) => c.id).toSet();
+            final newOnes = channels.where((c) => !existingIds.contains(c.id)).toList();
+            _allDudeChannels = [..._allDudeChannels, ...newOnes];
           });
         }
       } catch (_) {}
@@ -597,29 +597,31 @@ class _TVScreenState extends ConsumerState<TVScreen> {
             .map((e) => DudeStream.fromJson(e as Map<String, dynamic>))
             .toList();
 
-        final matched = streams
+        // Only use type=0 (plain HLS). type=1 requires Widevine DRM key — not supported.
+        final playableStreams = streams.where((s) => s.type == '0' && s.link.isNotEmpty).toList();
+
+        if (playableStreams.isEmpty && streams.isNotEmpty) {
+          _showErrorSnackBar('This channel uses DRM encryption — not supported.');
+          return;
+        }
+
+        final matched = playableStreams
             .where((s) => s.title.toLowerCase() == fmt.title.toLowerCase())
             .toList();
-        if (matched.isNotEmpty) {
+
+        final chosenStream = matched.isNotEmpty ? matched.first : (playableStreams.isNotEmpty ? playableStreams.first : null);
+
+        if (chosenStream != null) {
           final tvCh = TVChannel(
-            id: '${ch.id}_${matched.first.title}',
-            name: '${ch.title} - ${matched.first.title}',
+            id: '${ch.id}_${chosenStream.title}',
+            name: '${ch.title} - ${chosenStream.title}',
             category: categoryFromString(ch.category),
-            streamUrl: matched.first.link,
-            logoUrl: ch.image,
-          );
-          _play(tvCh);
-        } else if (streams.isNotEmpty) {
-          final tvCh = TVChannel(
-            id: '${ch.id}_${streams.first.title}',
-            name: '${ch.title} - ${streams.first.title}',
-            category: categoryFromString(ch.category),
-            streamUrl: streams.first.link,
+            streamUrl: chosenStream.link,
             logoUrl: ch.image,
           );
           _play(tvCh);
         } else {
-          _showErrorSnackBar('No links available for this channel.');
+          _showErrorSnackBar('No playable stream found for this channel.');
         }
       } else {
         _showErrorSnackBar('Failed to resolve channel stream.');
@@ -663,12 +665,30 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   int get _liveCount =>
       _channels.where((c) => c.live || _workingIds.contains(c.id)).length;
 
-  List<TVChannel> get _filtered => _channels.where((c) {
-        if (_cat != null && c.category != _cat) return false;
-        if (_query.isNotEmpty &&
-            !c.name.toLowerCase().contains(_query.toLowerCase())) return false;
-        return true;
-      }).toList();
+  // Unified filtered list: CriFO + DUDE channels based on selected category
+  List<TVChannel> get _filteredCrifo {
+    return _channels.where((c) {
+      if (_selectedCatKey is TVCategory && c.category != _selectedCatKey) return false;
+      if (_selectedCatKey is String) return false; // dude-only category
+      if (_query.isNotEmpty && !c.name.toLowerCase().contains(_query.toLowerCase())) return false;
+      return true;
+    }).toList();
+  }
+
+  List<DudeChannel> get _filteredDude {
+    if (_selectedCatKey is TVCategory) {
+      // show dude channels matching the same crifo category name
+      final catName = (_selectedCatKey as TVCategory).name.toLowerCase();
+      return _allDudeChannels.where((c) => c.category.toLowerCase() == catName).toList();
+    }
+    if (_selectedCatKey is String) {
+      return _dudeChannels; // already filtered to selected DUDE category
+    }
+    return _allDudeChannels; // All: show everything
+  }
+
+  // Legacy getter for backwards compat
+  List<TVChannel> get _filtered => _filteredCrifo;
 
   // ── Playback ───────────────────────────────────────────────────────────────
 
@@ -763,72 +783,6 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   }
 
   // ─── Dude TV UI Elements ────────────────────────────────────────────────────
-
-  Widget _buildServerToggle() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: context.cBgCard,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: context.cBorder),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _toggleServer(false),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: !_useDudeServer ? AppColors.primaryGradient : null,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Center(
-                  child: Text(
-                    'CriFO Server',
-                    style: TextStyle(
-                      color: !_useDudeServer ? Colors.white : context.cTextSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Inter',
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _toggleServer(true),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: _useDudeServer ? AppColors.primaryGradient : null,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Center(
-                  child: Text(
-                    'Dude Server',
-                    style: TextStyle(
-                      color: _useDudeServer ? Colors.white : context.cTextSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Inter',
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildDudeCategories() {
     if (_dudeCategories.isEmpty) return const SizedBox.shrink();
@@ -1092,15 +1046,9 @@ class _TVScreenState extends ConsumerState<TVScreen> {
             children: [
               if (_playing != null && !_fullscreen) _buildMiniPlayer(),
               _buildHeader(),
-              _buildServerToggle(),
-              if (_useDudeServer) ...[
-                _buildDudeCategories(),
-                const SizedBox(height: 4),
-                Expanded(child: _buildDudeGrid()),
-              ] else ...[
-                _buildPills(),
-                Expanded(child: _buildGrid()),
-              ],
+              _buildUnifiedCategories(),
+              const SizedBox(height: 4),
+              Expanded(child: _buildUnifiedGrid()),
             ],
           ),
         ),
@@ -1134,76 +1082,45 @@ class _TVScreenState extends ConsumerState<TVScreen> {
             fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: 1,
           )),
           const SizedBox(width: 6),
-          if (!_useDudeServer)
-            _checking
-                ? const SizedBox(width: 10, height: 10,
-                    child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF00B4FF)))
-                : Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF00B4FF).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFF00B4FF).withValues(alpha: 0.3)),
-                    ),
-                    child: Text('$_liveCount live', style: const TextStyle(
-                      color: Color(0xFF00B4FF), fontSize: 10,
-                      fontWeight: FontWeight.w700, fontFamily: 'Inter',
-                    )),
+          _checking
+              ? const SizedBox(width: 10, height: 10,
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF00B4FF)))
+              : Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00B4FF).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF00B4FF).withValues(alpha: 0.3)),
                   ),
-          if (_useDudeServer)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00B4FF).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF00B4FF).withValues(alpha: 0.3)),
-              ),
-              child: const Text('DUDE', style: TextStyle(
-                color: Color(0xFF00B4FF), fontSize: 10,
-                fontWeight: FontWeight.w700, fontFamily: 'Inter',
-              )),
-            ),
+                  child: Text('$_liveCount live', style: const TextStyle(
+                    color: Color(0xFF00B4FF), fontSize: 10,
+                    fontWeight: FontWeight.w700, fontFamily: 'Inter',
+                  )),
+                ),
           const SizedBox(width: 8),
-          if (!_useDudeServer)
-            Expanded(
-              child: TextField(
-                controller: _searchCtrl,
-                onChanged: (v) => setState(() => _query = v),
-                style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontFamily: 'Inter'),
-                decoration: InputDecoration(
-                  hintText: 'Search channels...',
-                  hintStyle: TextStyle(color: context.cTextMuted, fontSize: 12),
-                  prefixIcon: Icon(Icons.search_rounded, color: context.cTextMuted, size: 18),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                  filled: true,
-                  fillColor: context.cBgInput,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: context.cBorder)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: context.cBorder)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFF00B4FF), width: 1.2)),
-                ),
+          Expanded(
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: (v) => setState(() => _query = v),
+              style: TextStyle(color: context.cTextPrimary, fontSize: 12, fontFamily: 'Inter'),
+              decoration: InputDecoration(
+                hintText: 'Search channels...',
+                hintStyle: TextStyle(color: context.cTextMuted, fontSize: 12),
+                prefixIcon: Icon(Icons.search_rounded, color: context.cTextMuted, size: 18),
+                prefixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                filled: true,
+                fillColor: context.cBgInput,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: context.cBorder)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: context.cBorder)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Color(0xFF00B4FF), width: 1.2)),
               ),
             ),
-          if (_useDudeServer)
-            Expanded(
-              child: Text(
-                _selectedDudeCategory != null
-                    ? _selectedDudeCategory!.title.toUpperCase()
-                    : 'Loading...',
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  color: context.cTextSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  fontFamily: 'Inter',
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
+          ),
         ],
       ),
     );
@@ -1478,7 +1395,134 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       },
     );
   }
+
+  // ─── Unified Category Circles (DUDE TV style) ───────────────────────────────
+
+  static const _crifoCats = [
+    (null, 'ALL', Icons.tv_rounded),
+    (TVCategory.Sports, 'SPORTS', Icons.sports_rounded),
+    (TVCategory.Cricket, 'CRICKET', Icons.sports_cricket_rounded),
+    (TVCategory.Football, 'FOOTBALL', Icons.sports_soccer_rounded),
+    (TVCategory.Bangla, 'BANGLA', Icons.language_rounded),
+    (TVCategory.News, 'NEWS', Icons.newspaper_rounded),
+    (TVCategory.Entertainment, 'ENTERTAIN', Icons.movie_rounded),
+  ];
+
+  Widget _buildUnifiedCategories() {
+    return SizedBox(
+      height: 88,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        children: [
+          // CriFO static categories
+          ..._crifoCats.map((item) {
+            final isActive = _selectedCatKey == item.$1;
+            final count = item.$1 == null
+                ? _channels.length + _allDudeChannels.length
+                : _channels.where((c) => c.category == item.$1).length;
+            return _CategoryCircle(
+              label: item.$2,
+              icon: item.$3,
+              isActive: isActive,
+              count: count,
+              onTap: () {
+                setState(() {
+                  _selectedCatKey = item.$1;
+                  _dudeChannels = item.$1 == null ? _allDudeChannels : [];
+                });
+              },
+            );
+          }),
+          // DUDE dynamic categories
+          ..._dudeCategories.map((cat) {
+            final isActive = _selectedCatKey == cat.id;
+            return _CategoryCircle(
+              label: cat.title.toUpperCase(),
+              imageUrl: cat.image,
+              isActive: isActive,
+              count: cat.channelCount,
+              onTap: () {
+                setState(() {
+                  _selectedCatKey = cat.id;
+                  _selectedDudeCategory = cat;
+                });
+                _fetchDudeChannelsForCategory(cat);
+              },
+            );
+          }),
+          if (_dudeLoading && _dudeCategories.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+              child: SizedBox(width: 20, height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00B4FF))),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Unified 4-column Grid ────────────────────────────────────────────────
+
+  Widget _buildUnifiedGrid() {
+    final crifoChs = _filteredCrifo;
+    final dudeChs = _filteredDude;
+
+    final totalCount = crifoChs.length + dudeChs.length;
+
+    if (totalCount == 0) {
+      if (_dudeLoading) {
+        return const Center(child: CircularProgressIndicator(color: Color(0xFF00B4FF)));
+      }
+      return Center(child: Text('No channels found',
+          style: TextStyle(color: context.cTextMuted, fontFamily: 'Inter')));
+    }
+
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        childAspectRatio: 0.72,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+      ),
+      itemCount: totalCount,
+      itemBuilder: (_, i) {
+        if (i < crifoChs.length) {
+          // CriFO channel card
+          final ch = crifoChs[i];
+          final isActive = _playing?.id == ch.id;
+          final isWorking = ch.live || _workingIds.contains(ch.id);
+          return GestureDetector(
+            onTap: () => _play(ch),
+            child: _UnifiedChannelCard(
+              name: ch.name,
+              imageUrl: ch.logoUrl,
+              isActive: isActive,
+              isLive: isWorking,
+              isDude: false,
+            ),
+          );
+        } else {
+          // DUDE channel card
+          final ch = dudeChs[i - crifoChs.length];
+          final isActive = _playing?.id == '${ch.id}_playing';
+          return GestureDetector(
+            onTap: () => _showDudeSubChannelsSheet(ch),
+            child: _UnifiedChannelCard(
+              name: ch.title,
+              imageUrl: ch.image,
+              isActive: isActive,
+              isLive: false,
+              isDude: true,
+            ),
+          );
+        }
+      },
+    );
+  }
 }
+
 
 // ─── Fullscreen page ──────────────────────────────────────────────────────────
 
@@ -1772,5 +1816,237 @@ class _ChannelLogo extends StatelessWidget {
       style: const TextStyle(color: Color(0xFF00B4FF), fontSize: 24,
           fontWeight: FontWeight.w800, fontFamily: 'Inter'),
     ));
+  }
+}
+
+// --- Category Circle (DUDE TV style) -----------------------------------------
+
+class _CategoryCircle extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final String? imageUrl;
+  final bool isActive;
+  final int count;
+  final VoidCallback onTap;
+
+  const _CategoryCircle({
+    required this.label,
+    this.icon,
+    this.imageUrl,
+    required this.isActive,
+    required this.count,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 68,
+        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isActive
+                        ? const Color(0xFF00B4FF).withValues(alpha: 0.18)
+                        : context.cBgCard,
+                    border: Border.all(
+                      color: isActive ? const Color(0xFF00B4FF) : context.cBorder,
+                      width: isActive ? 2.2 : 1,
+                    ),
+                    boxShadow: isActive
+                        ? [BoxShadow(color: const Color(0xFF00B4FF).withValues(alpha: 0.35), blurRadius: 10, spreadRadius: 1)]
+                        : null,
+                  ),
+                  child: ClipOval(
+                    child: imageUrl != null && imageUrl!.isNotEmpty
+                        ? Image.network(imageUrl!, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _iconFallback(context))
+                        : _iconFallback(context),
+                  ),
+                ),
+                if (count > 0)
+                  Positioned(
+                    top: -3,
+                    right: -3,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF4444),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: context.cBg, width: 1),
+                      ),
+                      child: Text(
+                        count > 99 ? '99+' : '$count',
+                        style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isActive ? const Color(0xFF00B4FF) : context.cTextSecondary,
+                fontSize: 9,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                fontFamily: 'Inter',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _iconFallback(BuildContext context) {
+    return Container(
+      color: context.cBgElevated,
+      child: Icon(
+        icon ?? Icons.live_tv_rounded,
+        color: const Color(0xFF00B4FF),
+        size: 24,
+      ),
+    );
+  }
+}
+
+// --- Unified Channel Card (4-column DUDE TV style) ---------------------------
+
+class _UnifiedChannelCard extends StatelessWidget {
+  final String name;
+  final String? imageUrl;
+  final bool isActive;
+  final bool isLive;
+  final bool isDude;
+
+  const _UnifiedChannelCard({
+    required this.name,
+    this.imageUrl,
+    required this.isActive,
+    required this.isLive,
+    required this.isDude,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        color: isActive
+            ? const Color(0xFF00B4FF).withValues(alpha: 0.12)
+            : context.cBgCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isActive
+              ? const Color(0xFF00B4FF)
+              : isLive
+                  ? const Color(0xFF22C55E).withValues(alpha: 0.5)
+                  : context.cBorder,
+          width: isActive ? 1.5 : 1,
+        ),
+      ),
+      child: Stack(
+        children: [
+          Column(
+            children: [
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(6, 8, 6, 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: _buildLogo(context),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(5, 0, 5, 6),
+                child: Text(
+                  name,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isActive ? const Color(0xFF00B4FF) : context.cTextPrimary,
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (isLive && !isDude && !isActive)
+            const Positioned(
+              top: 5, right: 5,
+              child: SizedBox(width: 6, height: 6,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: Color(0xFF22C55E), shape: BoxShape.circle),
+                ),
+              ),
+            ),
+          if (isDude)
+            Positioned(
+              top: 4, left: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00B4FF).withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: const Text('HD', style: TextStyle(color: Colors.white, fontSize: 6, fontWeight: FontWeight.w800)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogo(BuildContext context) {
+    final url = imageUrl;
+    if (url != null && url.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.contain,
+        placeholder: (_, __) => const SizedBox.shrink(),
+        errorWidget: (_, __, ___) => _textFallback(context),
+        httpHeaders: const {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
+          'Referer': 'https://mdjamsad9.github.io/',
+        },
+      );
+    }
+    return _textFallback(context);
+  }
+
+  Widget _textFallback(BuildContext context) {
+    return Center(
+      child: Text(
+        name.isNotEmpty ? name[0].toUpperCase() : 'TV',
+        style: const TextStyle(
+          color: Color(0xFF00B4FF), fontSize: 20,
+          fontWeight: FontWeight.w800, fontFamily: 'Inter',
+        ),
+      ),
+    );
   }
 }
