@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:dio/dio.dart';
@@ -10,6 +11,7 @@ import '../../core/api/tv_channels.dart';
 import '../../core/services/remote_channels.dart';
 import '../../core/theme/colors.dart';
 import '../../core/providers/tv_fullscreen_provider.dart';
+import '../../core/services/drm_player.dart';
 
 // ─── Name sanitizer ───────────────────────────────────────────────────────────
 // Source data contains mojibake (UTF-8 read as Latin-1, emoji bytes, %X junk).
@@ -178,6 +180,9 @@ class _TVScreenState extends ConsumerState<TVScreen> {
 
   TVChannel? _playing;
   VideoPlayerController? _vpc;
+  final DrmPlayerService _drmPlayer = DrmPlayerService();
+  int? _drmTextureId;
+  bool _isDrmPlaying = false;
   bool _playerLoading = false;
   bool _fullscreen = false;
 
@@ -496,30 +501,36 @@ class _TVScreenState extends ConsumerState<TVScreen> {
                       margin: const EdgeInsets.symmetric(vertical: 4),
                       decoration: BoxDecoration(
                         color: context.cBgElevated,
-                        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: context.cBorder, width: 0.8),
                       ),
                       child: ListTile(
                         leading: Container(
-                          width: 32,
-                          height: 32,
-                          padding: const EdgeInsets.all(4),
+                          width: 36,
+                          height: 36,
+                          padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(6),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF00B4FF), Color(0xFF0077FF)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [BoxShadow(color: const Color(0xFF00B4FF).withValues(alpha: 0.3), blurRadius: 4)],
                           ),
                           child: Center(
                             child: fmt.logo.isNotEmpty
                                 ? CachedNetworkImage(
                                     imageUrl: fmt.logo,
                                     fit: BoxFit.contain,
+                                    color: Colors.white,
                                     errorWidget: (_, __, ___) => const Icon(
                                         Icons.tv_rounded,
                                         size: 16,
-                                        color: Color(0xFF00B4FF)),
+                                        color: Colors.white),
                                   )
                                 : const Icon(Icons.tv_rounded,
-                                    size: 16, color: Color(0xFF00B4FF)),
+                                    size: 16, color: Colors.white),
                           ),
                         ),
                         title: Text(
@@ -597,29 +608,39 @@ class _TVScreenState extends ConsumerState<TVScreen> {
             .map((e) => DudeStream.fromJson(e as Map<String, dynamic>))
             .toList();
 
-        // Only use type=0 (plain HLS). type=1 requires Widevine DRM key — not supported.
-        final playableStreams = streams.where((s) => s.type == '0' && s.link.isNotEmpty).toList();
+        // type=0: plain HLS — use video_player
+        final hlsStreams = streams.where((s) => s.type == '0' && s.link.isNotEmpty).toList();
 
-        if (playableStreams.isEmpty && streams.isNotEmpty) {
-          _showErrorSnackBar('This channel uses DRM encryption — not supported.');
-          return;
-        }
+        // type=1: Widevine DRM — use native ExoPlayer with DRM
+        final drmStreams = streams.where((s) => s.type == '1' && s.link.isNotEmpty).toList();
 
-        final matched = playableStreams
+        // Prefer stream matching the selected format title
+        final matchedHls = hlsStreams
+            .where((s) => s.title.toLowerCase() == fmt.title.toLowerCase())
+            .toList();
+        final matchedDrm = drmStreams
             .where((s) => s.title.toLowerCase() == fmt.title.toLowerCase())
             .toList();
 
-        final chosenStream = matched.isNotEmpty ? matched.first : (playableStreams.isNotEmpty ? playableStreams.first : null);
-
-        if (chosenStream != null) {
+        // Try HLS first, then fall back to DRM
+        if (matchedHls.isNotEmpty || hlsStreams.isNotEmpty) {
+          final chosen = matchedHls.isNotEmpty ? matchedHls.first : hlsStreams.first;
           final tvCh = TVChannel(
-            id: '${ch.id}_${chosenStream.title}',
-            name: '${ch.title} - ${chosenStream.title}',
+            id: '${ch.id}_${chosen.title}',
+            name: '${ch.title} - ${chosen.title}',
             category: categoryFromString(ch.category),
-            streamUrl: chosenStream.link,
+            streamUrl: chosen.link,
             logoUrl: ch.image,
           );
           _play(tvCh);
+        } else if (matchedDrm.isNotEmpty || drmStreams.isNotEmpty) {
+          final chosen = matchedDrm.isNotEmpty ? matchedDrm.first : drmStreams.first;
+          _playDrm(
+            url: chosen.link,
+            api: chosen.api,
+            channelName: '${ch.title} - ${chosen.title}',
+            channelImage: ch.image,
+          );
         } else {
           _showErrorSnackBar('No playable stream found for this channel.');
         }
@@ -748,30 +769,107 @@ class _TVScreenState extends ConsumerState<TVScreen> {
     }
   }
 
+  StreamSubscription<Map<String, dynamic>>? _drmSub;
+
+  Future<void> _playDrm({required String url, String api = '', required String channelName, required String channelImage}) async {
+    final token = ++_playToken;
+    _drmSub?.cancel();
+    setState(() {
+      _playing = TVChannel(
+        id: 'drm_$token',
+        name: channelName,
+        category: TVCategory.Sports,
+        streamUrl: url,
+        logoUrl: channelImage,
+      );
+      _isDrmPlaying = true;
+      _playerLoading = true;
+      _playerError = false;
+      _fullscreen = false;
+      _drmTextureId = null;
+    });
+    _vpc?.dispose();
+    _vpc = null;
+
+    try {
+      await _drmPlayer.play(url, api: api);
+      if (token != _playToken || !mounted) return;
+
+      // Show texture immediately — player is buffering
+      setState(() {
+        _drmTextureId = _drmPlayer.textureId;
+      });
+
+      // Listen for events asynchronously
+      _drmSub = _drmPlayer.events.listen((e) {
+        if (token != _playToken || !mounted) return;
+        if (e['type'] == 'ready') {
+          setState(() => _playerLoading = false);
+        } else if (e['type'] == 'error') {
+          final errMsg = e['error']?.toString() ?? 'Unknown error';
+          setState(() {
+            _playerLoading = false;
+            _playerError = true;
+            _isDrmPlaying = false;
+          });
+          if (mounted) _showErrorSnackBar('DRM Error: $errMsg');
+        }
+      });
+
+      // Timeout safeguard
+      Future.delayed(const Duration(seconds: 15), () {
+        if (token != _playToken || !mounted || !_playerLoading) return;
+        setState(() {
+          _playerLoading = false;
+          _playerError = true;
+          _isDrmPlaying = false;
+        });
+        _showErrorSnackBar('DRM player timed out.');
+      });
+    } catch (e) {
+      if (token != _playToken || !mounted) return;
+      setState(() {
+        _playerLoading = false;
+        _playerError = true;
+        _isDrmPlaying = false;
+      });
+      _showErrorSnackBar('DRM Error: ${e.toString()}');
+    }
+  }
+
   void _closePlayer() {
     _playToken++;
     _exitFullscreen();
     _vpc?.dispose();
+    _drmSub?.cancel();
+    _drmSub = null;
+    _drmPlayer.dispose();
     setState(() {
       _playing = null;
       _vpc = null;
       _playerLoading = false;
       _playerError = false;
       _fullscreen = false;
+      _isDrmPlaying = false;
+      _drmTextureId = null;
     });
   }
 
   void _enterFullscreen() {
     final vpc = _vpc;
     final ch = _playing;
-    if (vpc == null || ch == null) return;
+    if (ch == null) return;
+    if (vpc == null && !_isDrmPlaying) return;
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     setState(() => _fullscreen = true);
 
     ref.read(tvFullscreenProvider.notifier).state = _FullscreenPage(
       controller: vpc,
+      textureId: _drmTextureId,
+      isDrm: _isDrmPlaying,
       channelName: ch.name,
+      streamUrl: ch.streamUrl,
       onExit: _exitFullscreen,
     );
   }
@@ -947,79 +1045,27 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       );
     }
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 16),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 4,
-        childAspectRatio: 0.76,
-        crossAxisSpacing: 6,
-        mainAxisSpacing: 6,
+        childAspectRatio: 0.68,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
       ),
       itemCount: _dudeChannels.length,
       itemBuilder: (ctx, idx) {
         final ch = _dudeChannels[idx];
         return GestureDetector(
           onTap: () => _showDudeSubChannelsSheet(ch),
-          child: Container(
-            decoration: BoxDecoration(
-              color: context.cBgCard,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: context.cBorder, width: 0.8),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.fromLTRB(6, 6, 6, 4),
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Center(
-                      child: ch.image.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: ch.image,
-                              fit: BoxFit.contain,
-                              placeholder: (_, __) => const SizedBox.shrink(),
-                              errorWidget: (_, __, ___) => _channelTextLogo(ch.title),
-                            )
-                          : _channelTextLogo(ch.title),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-                  child: Text(
-                    ch.title,
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: context.cTextPrimary,
-                      fontSize: 8.5,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'Inter',
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          child: _UnifiedChannelCard(
+            name: ch.title,
+            imageUrl: ch.image,
+            isActive: false,
+            isLive: false,
+            isDude: true,
           ),
         );
       },
-    );
-  }
-
-  Widget _channelTextLogo(String title) {
-    return Text(
-      title.isNotEmpty ? title[0].toUpperCase() : 'C',
-      style: const TextStyle(
-        color: Color(0xFF00B4FF),
-        fontSize: 22,
-        fontWeight: FontWeight.w900,
-        fontFamily: 'Inter',
-      ),
     );
   }
 
@@ -1061,6 +1107,9 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       aspectRatio: 16 / 9,
       child: _PlayerStack(
         controller: _vpc,
+        textureId: _drmTextureId,
+        isDrm: _isDrmPlaying,
+        streamUrl: _playing?.streamUrl,
         loading: _playerLoading,
         hasError: _playerError,
         channelName: _playing?.name ?? '',
@@ -1074,28 +1123,51 @@ class _TVScreenState extends ConsumerState<TVScreen> {
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
       child: Row(
         children: [
-          Text('LIVE TV', style: TextStyle(
-            color: context.cTextPrimary, fontSize: 16,
-            fontWeight: FontWeight.w800, fontFamily: 'Inter', letterSpacing: 1,
-          )),
-          const SizedBox(width: 6),
+          ShaderMask(
+            shaderCallback: (bounds) => AppColors.primaryGradient.createShader(bounds),
+            child: const Text('LIVE TV', style: TextStyle(
+              color: Colors.white, fontSize: 18,
+              fontWeight: FontWeight.w900, fontFamily: 'Inter', letterSpacing: 1.5,
+            )),
+          ),
+          const SizedBox(width: 8),
           _checking
-              ? const SizedBox(width: 10, height: 10,
+              ? const SizedBox(width: 12, height: 12,
                   child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF00B4FF)))
               : Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF00B4FF).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF00B4FF).withValues(alpha: 0.2),
+                        const Color(0xFF0077FF).withValues(alpha: 0.1),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: const Color(0xFF00B4FF).withValues(alpha: 0.3)),
                   ),
-                  child: Text('$_liveCount live', style: const TextStyle(
-                    color: Color(0xFF00B4FF), fontSize: 10,
-                    fontWeight: FontWeight.w700, fontFamily: 'Inter',
-                  )),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 5, height: 5,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF22C55E),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text('$_liveCount live', style: const TextStyle(
+                        color: Color(0xFF00B4FF), fontSize: 10,
+                        fontWeight: FontWeight.w700, fontFamily: 'Inter',
+                      )),
+                    ],
+                  ),
                 ),
           const SizedBox(width: 8),
           Expanded(
@@ -1479,10 +1551,10 @@ class _TVScreenState extends ConsumerState<TVScreen> {
     }
 
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 16),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 4,
-        childAspectRatio: 0.72,
+        childAspectRatio: 0.78,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
       ),
@@ -1527,13 +1599,19 @@ class _TVScreenState extends ConsumerState<TVScreen> {
 // ─── Fullscreen page ──────────────────────────────────────────────────────────
 
 class _FullscreenPage extends StatelessWidget {
-  final VideoPlayerController controller;
+  final VideoPlayerController? controller;
+  final int? textureId;
+  final bool isDrm;
   final String channelName;
+  final String? streamUrl;
   final VoidCallback onExit;
 
   const _FullscreenPage({
-    required this.controller,
+    this.controller,
+    this.textureId,
+    this.isDrm = false,
     required this.channelName,
+    this.streamUrl,
     required this.onExit,
   });
 
@@ -1558,6 +1636,9 @@ class _FullscreenPage extends StatelessWidget {
                   width: h, height: w,
                   child: _PlayerStack(
                     controller: controller,
+                    textureId: textureId,
+                    isDrm: isDrm,
+                    streamUrl: streamUrl,
                     loading: false,
                     hasError: false,
                     channelName: channelName,
@@ -1580,16 +1661,22 @@ class _FullscreenPage extends StatelessWidget {
 
 class _PlayerStack extends StatelessWidget {
   final VideoPlayerController? controller;
+  final int? textureId;
+  final bool isDrm;
   final bool loading;
   final bool hasError;
   final String channelName;
   final bool fullscreen;
+  final String? streamUrl;
   final VoidCallback onClose;
   final VoidCallback onFullscreen;
   final VoidCallback onRetry;
 
   const _PlayerStack({
-    required this.controller,
+    this.controller,
+    this.textureId,
+    this.isDrm = false,
+    this.streamUrl,
     required this.loading,
     required this.hasError,
     required this.channelName,
@@ -1602,24 +1689,33 @@ class _PlayerStack extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ctrl = controller;
+    final tid = textureId;
     return Container(
       color: Colors.black,
       child: Stack(children: [
-        // Video
+        // Video (non-DRM)
         if (ctrl != null && ctrl.value.isInitialized)
           Center(
             child: AspectRatio(
               aspectRatio: ctrl.value.aspectRatio,
               child: VideoPlayer(ctrl),
             ),
-          )
-        else
+          ),
+        // Video (DRM via native texture)
+        if (tid != null && isDrm)
+          Center(
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Texture(textureId: tid),
+            ),
+          ),
+        if (ctrl == null && tid == null)
           const SizedBox.expand(),
 
-        // Loading overlay
+        // Loading overlay (transparent bg for DRM so texture shows through)
         if (loading)
           Container(
-            color: Colors.black,
+            color: isDrm ? Colors.transparent : Colors.black,
             child: Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 const SizedBox(width: 28, height: 28,
@@ -1635,7 +1731,7 @@ class _PlayerStack extends StatelessWidget {
         // Error state
         if (hasError || (ctrl != null && ctrl.value.hasError))
           Container(
-            color: Colors.black,
+            color: isDrm ? Colors.black87 : Colors.black,
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -1719,6 +1815,26 @@ class _PlayerStack extends StatelessWidget {
                 ]),
               ),
             const Spacer(),
+            if (streamUrl != null && streamUrl!.isNotEmpty)
+              _CtrlBtn(
+                icon: Icons.copy_rounded,
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: streamUrl!));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Stream URL copied',
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 12,
+                            fontFamily: 'Inter', fontWeight: FontWeight.w600),
+                      ),
+                      backgroundColor: const Color(0xFF00B4FF),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
             _CtrlBtn(
               icon: fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
               onTap: onFullscreen,
@@ -1799,23 +1915,48 @@ class _ChannelLogo extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        color: context.cBgElevated,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              context.cBgElevated,
+              context.cBgCard,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
         child: logoUrl.isNotEmpty
             ? Image.network(logoUrl, fit: BoxFit.contain,
                 width: double.infinity, height: double.infinity,
-                loadingBuilder: (_, child, p) => p == null ? child : _initial(),
-                errorBuilder: (_, __, ___) => _initial())
-            : _initial(),
+                loadingBuilder: (_, child, p) => p == null ? child : _fallback(context),
+                errorBuilder: (_, __, ___) => _fallback(context))
+            : _fallback(context),
       ),
     );
   }
 
-  Widget _initial() {
-    return Center(child: Text(
-      name.isNotEmpty ? name[0].toUpperCase() : 'T',
-      style: const TextStyle(color: Color(0xFF00B4FF), fontSize: 24,
-          fontWeight: FontWeight.w800, fontFamily: 'Inter'),
-    ));
+  Widget _fallback(BuildContext context) {
+    final letter = name.isNotEmpty ? name[0].toUpperCase() : 'T';
+    return Center(
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [Color(0xFF00B4FF), Color(0xFF0077FF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: Text(letter, style: const TextStyle(
+            color: Colors.white, fontSize: 16,
+            fontWeight: FontWeight.w800, fontFamily: 'Inter',
+          )),
+        ),
+      ),
+    );
   }
 }
 
@@ -1840,6 +1981,8 @@ class _CategoryCircle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = const Color(0xFF00B4FF);
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1852,39 +1995,50 @@ class _CategoryCircle extends StatelessWidget {
               clipBehavior: Clip.none,
               children: [
                 AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOut,
                   width: 52,
                   height: 52,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isActive
-                        ? const Color(0xFF00B4FF).withValues(alpha: 0.18)
-                        : context.cBgCard,
+                    gradient: isActive
+                        ? LinearGradient(
+                            colors: [accent.withValues(alpha: 0.25), accent.withValues(alpha: 0.1)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isActive ? null : context.cBgCard,
                     border: Border.all(
-                      color: isActive ? const Color(0xFF00B4FF) : context.cBorder,
+                      color: isActive ? accent : context.cBorder,
                       width: isActive ? 2.2 : 1,
                     ),
                     boxShadow: isActive
-                        ? [BoxShadow(color: const Color(0xFF00B4FF).withValues(alpha: 0.35), blurRadius: 10, spreadRadius: 1)]
+                        ? [BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 12, spreadRadius: 1)]
                         : null,
                   ),
                   child: ClipOval(
                     child: imageUrl != null && imageUrl!.isNotEmpty
                         ? Image.network(imageUrl!, fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _iconFallback(context))
-                        : _iconFallback(context),
+                            errorBuilder: (_, __, ___) => _fallback(context))
+                        : _fallback(context),
                   ),
                 ),
                 if (count > 0)
                   Positioned(
-                    top: -3,
-                    right: -3,
+                    top: -2,
+                    right: -2,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEF4444),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: context.cBg, width: 1),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: context.cBg, width: 1.5),
+                        boxShadow: [BoxShadow(color: const Color(0xFFEF4444).withValues(alpha: 0.4), blurRadius: 4)],
                       ),
                       child: Text(
                         count > 99 ? '99+' : '$count',
@@ -1901,7 +2055,7 @@ class _CategoryCircle extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: isActive ? const Color(0xFF00B4FF) : context.cTextSecondary,
+                color: isActive ? accent : context.cTextSecondary,
                 fontSize: 9,
                 fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                 fontFamily: 'Inter',
@@ -1913,9 +2067,18 @@ class _CategoryCircle extends StatelessWidget {
     );
   }
 
-  Widget _iconFallback(BuildContext context) {
+  Widget _fallback(BuildContext context) {
     return Container(
-      color: context.cBgElevated,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            context.cBgElevated,
+            context.cBgCard,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
       child: Icon(
         icon ?? Icons.live_tv_rounded,
         color: const Color(0xFF00B4FF),
@@ -1925,7 +2088,7 @@ class _CategoryCircle extends StatelessWidget {
   }
 }
 
-// --- Unified Channel Card (4-column DUDE TV style) ---------------------------
+// --- Unified Channel Card (4-column professional style) --------------------
 
 class _UnifiedChannelCard extends StatelessWidget {
   final String name;
@@ -1944,76 +2107,102 @@ class _UnifiedChannelCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = const Color(0xFF00B4FF);
+    final green = const Color(0xFF22C55E);
+
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
       decoration: BoxDecoration(
-        color: isActive
-            ? const Color(0xFF00B4FF).withValues(alpha: 0.12)
-            : context.cBgCard,
-        borderRadius: BorderRadius.circular(10),
+        gradient: isActive
+            ? LinearGradient(
+                colors: [
+                  accent.withValues(alpha: 0.15),
+                  accent.withValues(alpha: 0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : context.cCardGradient,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isActive
-              ? const Color(0xFF00B4FF)
+              ? accent
               : isLive
-                  ? const Color(0xFF22C55E).withValues(alpha: 0.5)
+                  ? green.withValues(alpha: 0.4)
                   : context.cBorder,
           width: isActive ? 1.5 : 1,
         ),
+        boxShadow: isActive
+            ? [BoxShadow(color: accent.withValues(alpha: 0.2), blurRadius: 8, spreadRadius: 1)]
+            : [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0, 2))],
       ),
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           Column(
             children: [
-              Expanded(
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: Container(
                   width: double.infinity,
-                  margin: const EdgeInsets.fromLTRB(6, 8, 6, 4),
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(8),
                     child: _buildLogo(context),
                   ),
                 ),
               ),
+              const SizedBox(height: 4),
               Padding(
-                padding: const EdgeInsets.fromLTRB(5, 0, 5, 6),
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
                 child: Text(
                   name,
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: isActive ? const Color(0xFF00B4FF) : context.cTextPrimary,
+                    color: isActive ? accent : context.cTextPrimary,
                     fontSize: 8.5,
                     fontWeight: FontWeight.w600,
                     fontFamily: 'Inter',
+                    height: 1.15,
                   ),
                 ),
               ),
             ],
           ),
           if (isLive && !isDude && !isActive)
-            const Positioned(
-              top: 5, right: 5,
-              child: SizedBox(width: 6, height: 6,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(color: Color(0xFF22C55E), shape: BoxShape.circle),
+            Positioned(
+              top: 6, right: 6,
+              child: Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(
+                  color: green,
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: green.withValues(alpha: 0.6), blurRadius: 4)],
                 ),
               ),
             ),
           if (isDude)
             Positioned(
-              top: 4, left: 4,
+              top: 6, left: 6,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00B4FF).withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(3),
+                  gradient: LinearGradient(
+                    colors: [accent, const Color(0xFF0077FF)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 4)],
                 ),
-                child: const Text('HD', style: TextStyle(color: Colors.white, fontSize: 6, fontWeight: FontWeight.w800)),
+                child: const Text('HD', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
               ),
             ),
         ],
@@ -2024,27 +2213,56 @@ class _UnifiedChannelCard extends StatelessWidget {
   Widget _buildLogo(BuildContext context) {
     final url = imageUrl;
     if (url != null && url.isNotEmpty) {
-      return CachedNetworkImage(
-        imageUrl: url,
-        fit: BoxFit.contain,
-        placeholder: (_, __) => const SizedBox.shrink(),
-        errorWidget: (_, __, ___) => _textFallback(context),
-        httpHeaders: const {
-          'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
-          'Referer': 'https://mdjamsad9.github.io/',
-        },
+      return Container(
+        color: context.cBgElevated,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: CachedNetworkImage(
+              imageUrl: url,
+              fit: BoxFit.contain,
+              placeholder: (_, __) => const SizedBox.shrink(),
+              errorWidget: (_, __, ___) => _gradientFallback(context),
+              httpHeaders: const {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
+                'Referer': 'https://mdjamsad9.github.io/',
+              },
+            ),
+          ),
+        ),
       );
     }
-    return _textFallback(context);
+    return _gradientFallback(context);
   }
 
-  Widget _textFallback(BuildContext context) {
-    return Center(
-      child: Text(
-        name.isNotEmpty ? name[0].toUpperCase() : 'TV',
-        style: const TextStyle(
-          color: Color(0xFF00B4FF), fontSize: 20,
-          fontWeight: FontWeight.w800, fontFamily: 'Inter',
+  Widget _gradientFallback(BuildContext context) {
+    final letter = name.isNotEmpty ? name[0].toUpperCase() : 'T';
+    return Container(
+      color: context.cBgElevated,
+      child: Center(
+        child: Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              colors: [Color(0xFF00B4FF), Color(0xFF0077FF)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [BoxShadow(color: const Color(0xFF00B4FF).withValues(alpha: 0.3), blurRadius: 6)],
+          ),
+          child: Center(
+            child: Text(
+              letter,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                fontFamily: 'Inter',
+              ),
+            ),
+          ),
         ),
       ),
     );

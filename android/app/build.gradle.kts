@@ -40,8 +40,8 @@ android {
             // R8 code shrinking + obfuscation is disabled here because gradle.properties
             // restricts Gradle JVM memory to 2GB (-Xmx2g). Running R8 with 2GB causes
             // severe GC thrashing and takes over 45+ minutes or hangs.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -57,6 +57,12 @@ android {
         checkReleaseBuilds = false
         abortOnError = false
     }
+}
+
+dependencies {
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.5.1")
 }
 
 flutter {
