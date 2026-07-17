@@ -2,13 +2,23 @@ package com.crifo.crifo
 
 import android.content.Context
 import android.graphics.SurfaceTexture
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.view.Surface
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackGroup
+import androidx.media3.common.VideoSize
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -46,6 +56,19 @@ class DrmPlayerPlugin(
                 val api = call.argument<String>("api") ?: ""
                 try {
                     val data = createNativePlayer(url, api)
+                    result.success(data)
+                } catch (e: Exception) {
+                    result.error("PLAY_ERROR", e.message ?: "Unknown error", null)
+                }
+            }
+            "playHls" -> {
+                val url = call.argument<String>("url") ?: ""
+                if (url.isEmpty()) {
+                    result.error("INVALID_ARG", "url is required", null)
+                    return
+                }
+                try {
+                    val data = createNativePlayer(url, "")
                     result.success(data)
                 } catch (e: Exception) {
                     result.error("PLAY_ERROR", e.message ?: "Unknown error", null)
@@ -97,21 +120,75 @@ class DrmPlayerPlugin(
         }
 
         val mediaItem = mediaItemBuilder.build()
-        val player = ExoPlayer.Builder(context).build()
+        val renderersFactory = DefaultRenderersFactory(context)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        val player = ExoPlayer.Builder(context, renderersFactory).build()
 
         player.setVideoSurface(surface)
-        player.setMediaItem(mediaItem)
-        player.prepare()
         player.playWhenReady = true
+
+        // Use explicit HLS source for .m3u8 to avoid codec detection from playlist headers
+        if (url.contains(".m3u8")) {
+            val httpFactory = DefaultHttpDataSource.Factory()
+                .setUserAgent("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+                .setConnectTimeoutMs(10000)
+                .setReadTimeoutMs(15000)
+            val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+            val hlsSource = HlsMediaSource.Factory(dataSourceFactory)
+                .setAllowChunklessPreparation(false)
+                .createMediaSource(mediaItem)
+            player.setMediaSource(hlsSource)
+        } else {
+            player.setMediaItem(mediaItem)
+        }
+        player.prepare()
 
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
                     channel.invokeMethod("onReady", id)
+
+                    // Log track info for debugging
+                    val tracks = player.currentTracks
+                    if (tracks != null) {
+                        for (group in tracks.groups) {
+                            val track = group.mediaTrackGroup?.getFormat(0)
+                            if (track != null) {
+                                Log.i("CriFO", "Track: ${track.sampleMimeType} ${track.codecs} ${track.width}x${track.height}")
+                            }
+                        }
+                    }
+
+                    // Check video after 5s — give HLS time to load first segment
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val p = players[id] ?: return@postDelayed
+                        val fmt = p.videoFormat
+                        val size = p.videoSize
+                        if (fmt == null) {
+                            Log.w("CriFO", "No video track detected for stream")
+                            channel.invokeMethod(
+                                "onError",
+                                mapOf("id" to id, "error" to "No video track in this stream")
+                            )
+                        } else if (size.width <= 0 && size.height <= 0) {
+                            Log.w("CriFO", "Video codec ${fmt.sampleMimeType}/${fmt.codecs} not supported")
+                            channel.invokeMethod(
+                                "onError",
+                                mapOf("id" to id, "error" to "Video codec not supported on this device")
+                            )
+                        } else {
+                            Log.i("CriFO", "Video OK: ${fmt.sampleMimeType} ${size.width}x${size.height}")
+                        }
+                    }, 5000)
                 }
             }
 
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                // No longer report error here — wait for the delayed check instead
+            }
+
             override fun onPlayerError(error: PlaybackException) {
+                Log.e("CriFO", "Player error: ${error.message}")
                 channel.invokeMethod(
                     "onError",
                     mapOf("id" to id, "error" to (error.message ?: "Unknown"))
@@ -201,7 +278,7 @@ class DrmPlayerPlugin(
     }
 
     private fun stopPlayer(id: Int) {
-        players[id]?.pause()
+        disposePlayer(id)
     }
 
     private fun disposePlayer(id: Int) {

@@ -63,6 +63,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
     implementation("androidx.media3:media3-exoplayer-dash:1.5.1")
+    // FFmpeg software decoder for audio codecs (AC3, DTS, etc.)
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
 }
 
 flutter {

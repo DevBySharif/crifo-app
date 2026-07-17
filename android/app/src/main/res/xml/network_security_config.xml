@@ -25,59 +25,26 @@
 -->
 <network-security-config>
 
-    <!-- ── Default: HTTPS only ────────────────────────────────────────── -->
-    <base-config cleartextTrafficPermitted="false">
+    <!-- Default: allow cleartext (needed for IPTV streams on raw IPs) -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
 
-    <!-- ── Trusted API + image domains (HTTPS enforced) ─────────────── -->
+    <!-- Enforce HTTPS for API and data domains -->
     <domain-config cleartextTrafficPermitted="false">
-        <!-- FotMob -->
         <domain includeSubdomains="true">fotmob.com</domain>
-        <!-- CriFO Cloudflare Worker proxy -->
         <domain includeSubdomains="true">workers.dev</domain>
-        <!-- CriFO website (version check + APK) -->
         <domain includeSubdomains="true">crifo.netlify.app</domain>
-        <!-- Football-data.org standings -->
         <domain includeSubdomains="true">football-data.org</domain>
-        <!-- ESPN fallback -->
         <domain includeSubdomains="true">espn.com</domain>
         <domain includeSubdomains="true">espncdn.com</domain>
-        <!-- TheSportsDB fallback standings -->
         <domain includeSubdomains="true">thesportsdb.com</domain>
-        <!-- Firebase -->
         <domain includeSubdomains="true">firebaseapp.com</domain>
         <domain includeSubdomains="true">firebaseio.com</domain>
         <domain includeSubdomains="true">googleapis.com</domain>
         <domain includeSubdomains="true">gstatic.com</domain>
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </domain-config>
-
-    <!-- ── TV HLS stream CDNs (cleartext allowed ONLY for these) ────── -->
-    <!--
-        These CDNs serve HLS (.m3u8) streams over HTTP. Restricting to
-        specific hostnames prevents the blanket cleartext permission that
-        usesCleartextTraffic="true" granted.
-    -->
-    <domain-config cleartextTrafficPermitted="true">
-        <!-- Bangladeshi broadcaster CDNs -->
-        <domain includeSubdomains="true">gpcdn.net</domain>
-        <domain includeSubdomains="true">jagobd.com</domain>
-        <domain includeSubdomains="true">daioncdn.net</domain>
-        <domain includeSubdomains="true">ercdn.net</domain>
-        <domain includeSubdomains="true">aynaott.com</domain>
-        <!-- Generic streaming CDNs -->
-        <domain includeSubdomains="true">amagi.tv</domain>
-        <domain includeSubdomains="true">sofast.tv</domain>
-        <domain includeSubdomains="true">tubi.video</domain>
-        <domain includeSubdomains="true">transmit.live</domain>
-        <domain includeSubdomains="true">akamaized.net</domain>
-        <domain includeSubdomains="true">akamai.net</domain>
-        <domain includeSubdomains="true">cloudfront.net</domain>
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
