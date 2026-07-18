@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -9,7 +10,7 @@ plugins {
 
 // Apply Google Services plugin only when google-services.json is present.
 // This allows CI builds to skip Firebase when the secret isn't set.
-val hasGoogleServices = file("google-services.json").exists()
+val hasGoogleServices = File("google-services.json").exists()
 if (hasGoogleServices) {
     apply(plugin = "com.google.gms.google-services")
 }
