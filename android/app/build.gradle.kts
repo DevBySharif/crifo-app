@@ -37,11 +37,10 @@ android {
             // See: https://docs.flutter.dev/deployment/android#signing-the-app
             signingConfig = signingConfigs.getByName("debug")
 
-            // R8 code shrinking + obfuscation is disabled here because gradle.properties
-            // restricts Gradle JVM memory to 2GB (-Xmx2g). Running R8 with 2GB causes
-            // severe GC thrashing and takes over 45+ minutes or hangs.
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // R8 code shrinking + obfuscation is disabled because it causes OOM on CI runners
+            // with the current Gradle heap settings. Enable locally if needed.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
