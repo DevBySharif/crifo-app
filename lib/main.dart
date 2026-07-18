@@ -13,20 +13,14 @@ import 'features/home/home_screen.dart';
 import 'features/scores/scores_screen.dart';
 import 'features/tv/tv_screen.dart';
 import 'features/search/search_screen.dart';
+import 'features/onboarding/onboarding_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Firebase may not be configured (e.g. CI builds without google-services.json).
-  // Gracefully skip so the app still works without Firebase features.
   try {
     await Firebase.initializeApp();
   } catch (_) {
-    // no-op
   }
-  // Lock the app to portrait. Video fullscreen fakes landscape with a 90°
-  // Transform.rotate, which assumes the underlying app never rotates —
-  // without this lock, turning the phone rotated the whole app AND the
-  // rotated player, breaking fullscreen completely.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -34,7 +28,8 @@ void main() async {
     systemNavigationBarColor: AppColors.navSurface,
     systemNavigationBarIconBrightness: Brightness.light,
   ));
-  runApp(const ProviderScope(child: CriFOApp()));
+  final onboardingDone = await isOnboardingDone();
+  runApp(ProviderScope(child: CriFOApp(showOnboarding: !onboardingDone)));
 }
 
 final jailbreakProvider = FutureProvider<bool>((ref) async {
@@ -46,7 +41,8 @@ final jailbreakProvider = FutureProvider<bool>((ref) async {
 });
 
 class CriFOApp extends ConsumerWidget {
-  const CriFOApp({super.key});
+  final bool showOnboarding;
+  const CriFOApp({super.key, this.showOnboarding = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -69,7 +65,9 @@ class CriFOApp extends ConsumerWidget {
       themeMode: themeMode,
       themeAnimationDuration: const Duration(milliseconds: 350),
       themeAnimationCurve: Curves.easeOutCubic,
-      home: jailbreak.when(
+      home: showOnboarding
+          ? OnboardingScreen(child: MainShell())
+          : jailbreak.when(
         data: (isJailbroken) {
           if (isJailbroken) return const SecurityBlockScreen();
           return const MainShell();

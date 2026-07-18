@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 const kAppVersionCode = 16;
 
 const _versionUrl = 'https://crifo.netlify.app/version.json';
+const _maxRetries = 2;
 
 class AppUpdate {
   final int versionCode;
@@ -23,30 +24,34 @@ class AppUpdate {
 /// running, otherwise null. Never throws — a network failure just means
 /// "no update".
 Future<AppUpdate?> checkForUpdate() async {
-  try {
-    final res = await Dio()
-        .get(_versionUrl,
-            options: Options(
-              responseType: ResponseType.json,
-              headers: {'Cache-Control': 'no-cache'},
-            ))
-        .timeout(const Duration(seconds: 6));
+  for (var attempt = 0; attempt <= _maxRetries; attempt++) {
+    try {
+      final res = await Dio()
+          .get(_versionUrl,
+              options: Options(
+                responseType: ResponseType.json,
+                headers: {'Cache-Control': 'no-cache'},
+              ))
+          .timeout(const Duration(seconds: 6));
 
-    final data = res.data is Map ? (res.data as Map) : <String, dynamic>{};
-    final code = int.tryParse('${data['versionCode']}') ?? 0;
-    if (code <= kAppVersionCode) return null;
+      final data = res.data is Map ? (res.data as Map) : <String, dynamic>{};
+      final code = int.tryParse('${data['versionCode']}') ?? 0;
+      if (code <= kAppVersionCode) return null;
 
-    var apk = '${data['apkUrl'] ?? ''}'.trim();
-    if (apk.isEmpty) return null;
-    if (apk.startsWith('/')) apk = 'https://crifo.netlify.app$apk';
+      var apk = '${data['apkUrl'] ?? ''}'.trim();
+      if (apk.isEmpty) return null;
+      if (apk.startsWith('/')) apk = 'https://crifo.netlify.app$apk';
 
-    return AppUpdate(
-      versionCode: code,
-      versionName: '${data['versionName'] ?? ''}',
-      apkUrl: apk,
-      releaseNotes: '${data['releaseNotes'] ?? ''}',
-    );
-  } catch (_) {
-    return null;
+      return AppUpdate(
+        versionCode: code,
+        versionName: '${data['versionName'] ?? ''}',
+        apkUrl: apk,
+        releaseNotes: '${data['releaseNotes'] ?? ''}',
+      );
+    } catch (_) {
+      if (attempt >= _maxRetries) return null;
+      await Future.delayed(const Duration(seconds: 1));
+    }
   }
+  return null;
 }
