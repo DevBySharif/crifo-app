@@ -8,6 +8,7 @@ import 'core/theme/app_theme.dart';
 import 'core/theme/colors.dart';
 import 'core/theme/theme_provider.dart';
 import 'core/providers/tv_fullscreen_provider.dart';
+import 'core/providers/tv_live_count_provider.dart';
 import 'core/services/update_checker.dart';
 import 'features/home/home_screen.dart';
 import 'features/scores/scores_screen.dart';
@@ -92,6 +93,7 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell> {
   int _index = 0;
+  late final PageController _pageCtrl;
 
   static const _screens = [
     HomeScreen(),
@@ -103,12 +105,19 @@ class _MainShellState extends ConsumerState<MainShell> {
   @override
   void initState() {
     super.initState();
+    _pageCtrl = PageController();
     // A moment after first paint, ask the website if a newer build exists.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future.delayed(const Duration(seconds: 2));
       final update = await checkForUpdate();
       if (update != null && mounted) _showUpdateDialog(update);
     });
+  }
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
   }
 
   void _showUpdateDialog(AppUpdate u) {
@@ -161,9 +170,10 @@ class _MainShellState extends ConsumerState<MainShell> {
     );
   }
 
-  void _onTap(int i) {
+  void _goToTab(int i) {
     if (i == _index) return;
     HapticFeedback.selectionClick();
+    _pageCtrl.animateToPage(i, duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
     setState(() => _index = i);
     if (i != 2) {
       ref.read(tvFullscreenProvider.notifier).state = null;
@@ -174,13 +184,13 @@ class _MainShellState extends ConsumerState<MainShell> {
   Widget build(BuildContext context) {
     final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
     final fsWidget = ref.watch(tvFullscreenProvider);
+    final liveCount = ref.watch(tvLiveCountProvider);
 
     // A screen requested TV playback (e.g. match "Where to watch") — jump to TV tab
     ref.listen(tvPlayRequestProvider, (prev, next) {
       if (next != null && _index != 2) {
-        // Pop pushed routes (match detail etc.) so the TV tab is visible
         Navigator.of(context).popUntil((r) => r.isFirst);
-        setState(() => _index = 2);
+        _goToTab(2);
       }
     });
 
@@ -188,12 +198,14 @@ class _MainShellState extends ConsumerState<MainShell> {
       children: [
         Scaffold(
           backgroundColor: context.cBg,
-          body: IndexedStack(
-            index: _index,
+          body: PageView(
+            controller: _pageCtrl,
+            physics: fsWidget == null ? const PageScrollPhysics() : const NeverScrollableScrollPhysics(),
+            onPageChanged: (i) => setState(() => _index = i),
             children: _screens.map((s) => RepaintBoundary(child: s)).toList(),
           ),
           bottomNavigationBar: fsWidget == null
-              ? _PremiumNavBar(currentIndex: _index, onTap: _onTap, isDark: isDark)
+              ? _PremiumNavBar(currentIndex: _index, onTap: _goToTab, isDark: isDark, liveCount: liveCount)
               : null,
         ),
         if (fsWidget != null) Positioned.fill(child: fsWidget),
@@ -207,11 +219,13 @@ class _PremiumNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
   final bool isDark;
+  final int liveCount;
 
   const _PremiumNavBar({
     required this.currentIndex,
     required this.onTap,
     required this.isDark,
+    this.liveCount = 0,
   });
 
   static const _items = [
@@ -248,6 +262,7 @@ class _PremiumNavBar extends StatelessWidget {
             children: List.generate(_items.length, (i) {
               final item   = _items[i];
               final active = currentIndex == i;
+              final showBadge = i == 2 && liveCount > 0;
               return Expanded(
                 child: GestureDetector(
                   onTap: () => onTap(i),
@@ -257,27 +272,53 @@ class _PremiumNavBar extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Icon with pill background
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOutCubic,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: active
-                                ? AppColors.accentPrimary.withValues(alpha: 0.14)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(24),
-                            border: active
-                                ? Border.all(color: AppColors.accentPrimary.withValues(alpha: 0.25), width: 0.5)
-                                : null,
-                          ),
-                          child: Icon(
-                            active ? item.activeIcon : item.icon,
-                            color: active
-                                ? AppColors.accentPrimary
-                                : context.cTextMuted,
-                            size: 22,
-                          ),
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? AppColors.accentPrimary.withValues(alpha: 0.14)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(24),
+                                border: active
+                                    ? Border.all(color: AppColors.accentPrimary.withValues(alpha: 0.25), width: 0.5)
+                                    : null,
+                              ),
+                              child: Icon(
+                                active ? item.activeIcon : item.icon,
+                                color: active
+                                    ? AppColors.accentPrimary
+                                    : context.cTextMuted,
+                                size: 22,
+                              ),
+                            ),
+                            if (showBadge)
+                              Positioned(
+                                right: 6,
+                                top: -2,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.live,
+                                    borderRadius: BorderRadius.circular(8),
+                                    boxShadow: [BoxShadow(color: AppColors.liveGlow, blurRadius: 6)],
+                                  ),
+                                  child: Text(
+                                    '$liveCount',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w800,
+                                      fontFamily: 'Inter',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 3),
                         AnimatedDefaultTextStyle(

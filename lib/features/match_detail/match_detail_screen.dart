@@ -357,7 +357,9 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
           _buildInlinePlayer(),
           _buildCompactScore(home, away, status, league),
         ] else
-        Container(
+        Hero(
+          tag: 'match_${widget.matchId}',
+          child: Container(
           height: 238 + topPad,
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -395,6 +397,7 @@ class _MatchDetailScreenState extends ConsumerState<MatchDetailScreen>
               ),
             ],
           ),
+        ),
         ),
         if (!watching && isLive) _buildWatchLiveBar(),
         Container(

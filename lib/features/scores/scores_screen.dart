@@ -445,12 +445,14 @@ class _MatchItem extends StatelessWidget {
     final hG       = parts.isNotEmpty ? int.tryParse(parts.first.trim()) ?? -1 : -1;
     final aG       = parts.length > 1 ? int.tryParse(parts.last.trim()) ?? -1 : -1;
 
+    final mid = _s(match['id']);
     return GestureDetector(
       onTap: () {
-        final mid = _s(match['id']);
         if (mid.isNotEmpty) Navigator.push(context, MaterialPageRoute(builder: (_) => MatchDetailScreen(matchId: mid)));
       },
-      child: Container(
+      child: Hero(
+        tag: 'match_$mid',
+        child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isLive ? AppColors.live.withValues(alpha: 0.03) : null,

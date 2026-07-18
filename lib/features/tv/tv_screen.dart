@@ -11,6 +11,8 @@ import '../../core/api/tv_channels.dart';
 import '../../core/services/remote_channels.dart';
 import '../../core/theme/colors.dart';
 import '../../core/providers/tv_fullscreen_provider.dart';
+import '../../core/providers/tv_live_count_provider.dart';
+import '../../core/widgets/skeleton.dart';
 import '../../core/services/drm_player.dart';
 
 // ─── Name sanitizer ───────────────────────────────────────────────────────────
@@ -194,6 +196,7 @@ class _TVScreenState extends ConsumerState<TVScreen> {
         .compareTo(_channelSortKey(b, working: b.live ? 0 : 1)));
   Set<String> _workingIds = {};
   bool _checking = false;
+  bool _useGridView = true;
 
   // --- DUDE TV State ---
   List<DudeCategory> _dudeCategories = [];
@@ -244,7 +247,8 @@ class _TVScreenState extends ConsumerState<TVScreen> {
     super.initState();
     _pageController.addListener(_onPageChanged);
     _loadRemoteThenCheck();
-    _fetchDudeCategories(); // auto-load DUDE channels on start
+    _fetchDudeCategories();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reportLiveCount());
   }
 
   // Pull the latest channel list from the server (so channels can change with
@@ -294,6 +298,7 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       _channels = sorted;
       _checking = false;
     });
+    _reportLiveCount();
   }
 
   // ─── Dude TV Backend Systems ────────────────────────────────────────────────
@@ -773,6 +778,10 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   int get _liveCount =>
       _channels.where((c) => c.live || _workingIds.contains(c.id)).length;
 
+  void _reportLiveCount() {
+    ref.read(tvLiveCountProvider.notifier).state = _liveCount;
+  }
+
   // Unified filtered list: CriFO + DUDE channels based on selected category
   // Working/live channels sorted first.
   List<TVChannel> get _filteredCrifo {
@@ -1199,7 +1208,17 @@ class _TVScreenState extends ConsumerState<TVScreen> {
               _buildHeader(),
               _buildUnifiedCategories(),
               const SizedBox(height: 4),
-              Expanded(child: _buildUnifiedGrid()),
+              Expanded(
+                child: RefreshIndicator(
+                  color: AppColors.accentPrimary,
+                  backgroundColor: context.cBgCard,
+                  onRefresh: () async {
+                    await _loadRemoteThenCheck();
+                    _reportLiveCount();
+                  },
+                  child: _buildUnifiedGrid(),
+                ),
+              ),
             ],
           ),
         ),
@@ -1274,7 +1293,25 @@ class _TVScreenState extends ConsumerState<TVScreen> {
                     ],
                   ),
                 ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
+          // View toggle
+          GestureDetector(
+            onTap: () => setState(() => _useGridView = !_useGridView),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: context.cBgCard,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: context.cBorder),
+              ),
+              child: Icon(
+                _useGridView ? Icons.list_rounded : Icons.grid_view_rounded,
+                color: context.cTextSecondary, size: 16,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
           Expanded(
             child: TextField(
               controller: _searchCtrl,
@@ -1703,12 +1740,11 @@ class _TVScreenState extends ConsumerState<TVScreen> {
   }
 
   Widget _buildCategoryGrid(Object? catKey) {
+    if (_dudeLoading && _allDudeChannels.isEmpty) {
+      return _buildSkeletonGrid();
+    }
     List<TVChannel> crifoChs;
     List<DudeChannel> dudeChs;
-    if (catKey == null) {
-      crifoChs = _channels;
-      dudeChs = _allDudeChannels;
-    } else if (catKey is TVCategory) {
       crifoChs = _channels.where((c) => c.category == catKey).toList();
       final cn = catKey.name.toLowerCase();
       dudeChs = _allDudeChannels.where((c) {
@@ -1750,6 +1786,25 @@ class _TVScreenState extends ConsumerState<TVScreen> {
       return 0;
     });
 
+    if (_useGridView) {
+      return _buildGridChannels(entries);
+    }
+    return _buildListChannels(entries);
+  }
+
+  Widget _buildSkeletonGrid() {
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4, childAspectRatio: 1.0,
+        crossAxisSpacing: 8, mainAxisSpacing: 8,
+      ),
+      itemCount: 12,
+      itemBuilder: (_, i) => const SkeletonBlock(height: double.infinity, borderRadius: 10),
+    );
+  }
+
+  Widget _buildGridChannels(List<_GridEntry> entries) {
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 90),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1787,6 +1842,122 @@ class _TVScreenState extends ConsumerState<TVScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildListChannels(List<_GridEntry> entries) {
+    final sorted = entries.map((e) => e.name).toSet().toList()..sort();
+    final letters = sorted.map((n) => n[0].toUpperCase()).toSet().toList()..sort();
+    return Stack(
+      children: [
+        ListView.builder(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 90),
+          itemCount: entries.length,
+          itemBuilder: (_, i) {
+            final e = entries[i];
+            final showLetter = i == 0 || e.name[0].toUpperCase() != entries[i - 1].name[0].toUpperCase();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (showLetter)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    child: Text(e.name[0].toUpperCase(), style: TextStyle(
+                      color: AppColors.accentPrimary, fontSize: 13,
+                      fontWeight: FontWeight.w800, fontFamily: 'Inter',
+                    )),
+                  ),
+                GestureDetector(
+                  onTap: () {
+                    if (e.isDude && e.dude != null) {
+                      _showDudeSubChannelsSheet(e.dude!);
+                    } else if (e.isGroup) {
+                      _showChannelGroupSheet(e.name, e.channels);
+                    } else {
+                      _play(e.channels.first);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    margin: const EdgeInsets.symmetric(vertical: 2),
+                    decoration: BoxDecoration(
+                      color: context.cBgCard,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: context.cBorder.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 32, height: 32,
+                          decoration: BoxDecoration(
+                            color: context.cBgElevated,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Center(
+                            child: e.image != null && e.image != 'o'
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Image.network(e.image!, width: 24, height: 24, fit: BoxFit.contain,
+                                      errorBuilder: (_, __, ___) => Text(e.name[0].toUpperCase(),
+                                        style: const TextStyle(color: Color(0xFF00B4FF), fontSize: 14, fontWeight: FontWeight.w700)),
+                                    ),
+                                  )
+                                : Text(e.name[0].toUpperCase(),
+                                    style: const TextStyle(color: Color(0xFF00B4FF), fontSize: 14, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(e.name, style: TextStyle(
+                            color: context.cTextPrimary, fontSize: 12,
+                            fontWeight: FontWeight.w600, fontFamily: 'Inter',
+                          ), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ),
+                        if (e.isGroup)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.accentPrimary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text('${e.channels.length}', style: const TextStyle(
+                              color: AppColors.accentPrimary, fontSize: 9, fontWeight: FontWeight.w700)),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        if (letters.length > 3 && !_query.isEmpty)
+          Positioned(
+            right: 2, top: 0, bottom: 0,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: letters.map((l) {
+                return GestureDetector(
+                  onTap: () {
+                    final idx = entries.indexWhere((e) => e.name[0].toUpperCase() == l);
+                    if (idx >= 0) {
+                      if (context.findAncestorStateOfType<ScrollableState>() case final s?) {
+                        s.position.jumpTo(idx * 56.0);
+                      }
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                    child: Text(l, style: TextStyle(
+                      color: AppColors.accentPrimary, fontSize: 9,
+                      fontWeight: FontWeight.w700, fontFamily: 'Inter',
+                    )),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+      ],
     );
   }
 }
