@@ -1745,8 +1745,9 @@ class _TVScreenState extends ConsumerState<TVScreen> {
     }
     List<TVChannel> crifoChs;
     List<DudeChannel> dudeChs;
+    if (_allDudeChannels.isNotEmpty) {
       crifoChs = _channels.where((c) => c.category == catKey).toList();
-      final cn = catKey.name.toLowerCase();
+      final cn = (catKey is Enum ? catKey.name : '$catKey').toLowerCase();
       dudeChs = _allDudeChannels.where((c) {
         final chCat = c.category.toLowerCase();
         final chTitle = c.title.toLowerCase();

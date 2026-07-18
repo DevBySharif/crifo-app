@@ -5,7 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/api/espn_client.dart';
 import '../../core/models/espn_match.dart';
 import '../../core/theme/colors.dart';
-import 'espn_match_detail_screen.dart';
+
 
 final _liveProvider = FutureProvider<List<ESPNMatch>>((ref) async {
   return EspnClient.getScoreboard();
@@ -186,15 +186,7 @@ class _ESPNMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(
-        builder: (_) => ESPNMatchDetailScreen(
-          matchId: match.id,
-          leagueSlug: match.leagueSlug,
-          match: match,
-        ),
-      )),
-      child: Container(
+    return Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -277,7 +269,6 @@ class _ESPNMatchCard extends StatelessWidget {
             ],
           ],
         ),
-      ),
     );
   }
 }

@@ -491,7 +491,8 @@ class _MatchItem extends StatelessWidget {
           Icon(Icons.chevron_right, color: context.cTextMuted, size: 14),
         ]),
       ),
-    );
+    ),
+  );
   }
 
   String _formatTime(dynamic utc) {
