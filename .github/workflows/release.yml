@@ -61,3 +61,32 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync APK to crifo-web (Netlify)
+        env:
+          PAT: ${{ secrets.CRIFO_WEB_PAT }}
+        run: |
+          VERSION_NAME="${GITHUB_REF_NAME#v}"
+          VERSION_CODE="$(grep '^version: ' pubspec.yaml | sed -E 's/.*\+([0-9]+).*/\1/')"
+          echo "Syncing v${VERSION_NAME} (code ${VERSION_CODE}) to crifo-web …"
+
+          git clone "https://x-access-token:${PAT}@github.com/DevBySharif/crifo-web.git" /tmp/crifo-web
+
+          cp build/app/outputs/flutter-apk/app-release.apk /tmp/crifo-web/public/app-release.apk
+
+          cat > /tmp/crifo-web/public/version.json <<EOF
+          {
+            "versionCode": ${VERSION_CODE},
+            "versionName": "${VERSION_NAME}",
+            "apkUrl": "https://crifo.netlify.app/app-release.apk",
+            "releaseNotes": ""
+          }
+          EOF
+
+          cd /tmp/crifo-web
+          git config user.name "CriFO CI"
+          git config user.email "ci@crifo.app"
+          git add .
+          git commit -m "Auto-deploy ${GITHUB_REF_NAME} from CI"
+          git push
+        shell: bash
