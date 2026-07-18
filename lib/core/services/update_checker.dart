@@ -1,5 +1,8 @@
 import 'package:dio/dio.dart';
-import 'package:package_info_plus/package_info_plus.dart';
+
+/// Installed build number. Must match pubspec `version: x.y.z+N` on every
+/// release so the in-app update prompt can detect newer builds.
+const kAppVersionCode = 16;
 
 const _versionUrl = 'https://crifo.netlify.app/version.json';
 
@@ -21,9 +24,6 @@ class AppUpdate {
 /// "no update".
 Future<AppUpdate?> checkForUpdate() async {
   try {
-    final info = await PackageInfo.fromPlatform();
-    final installedCode = int.tryParse(info.buildNumber) ?? 0;
-
     final res = await Dio()
         .get(_versionUrl,
             options: Options(
@@ -33,15 +33,15 @@ Future<AppUpdate?> checkForUpdate() async {
         .timeout(const Duration(seconds: 6));
 
     final data = res.data is Map ? (res.data as Map) : <String, dynamic>{};
-    final serverCode = int.tryParse('${data['versionCode']}') ?? 0;
-    if (serverCode <= installedCode) return null;
+    final code = int.tryParse('${data['versionCode']}') ?? 0;
+    if (code <= kAppVersionCode) return null;
 
     var apk = '${data['apkUrl'] ?? ''}'.trim();
     if (apk.isEmpty) return null;
     if (apk.startsWith('/')) apk = 'https://crifo.netlify.app$apk';
 
     return AppUpdate(
-      versionCode: serverCode,
+      versionCode: code,
       versionName: '${data['versionName'] ?? ''}',
       apkUrl: apk,
       releaseNotes: '${data['releaseNotes'] ?? ''}',
