@@ -16,7 +16,13 @@ import 'features/search/search_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  // Firebase may not be configured (e.g. CI builds without google-services.json).
+  // Gracefully skip so the app still works without Firebase features.
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    // no-op
+  }
   // Lock the app to portrait. Video fullscreen fakes landscape with a 90°
   // Transform.rotate, which assumes the underlying app never rotates —
   // without this lock, turning the phone rotated the whole app AND the
