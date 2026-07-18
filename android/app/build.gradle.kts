@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -11,6 +13,15 @@ val hasGoogleServices = file("google-services.json").exists()
 if (hasGoogleServices) {
     apply(plugin = "com.google.gms.google-services")
 }
+
+// Load keystore config from key.properties (if present — CI uses GitHub secrets instead).
+val keystoreFile = rootProject.file("key.properties")
+val keystoreExists = keystoreFile.exists()
+val keystoreProps = if (keystoreExists) {
+    val props = Properties()
+    keystoreFile.reader().use { props.load(it) }
+    props
+} else null
 
 android {
     namespace = "com.crifo.crifo"
@@ -27,24 +38,32 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.crifo.crifo"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProps != null) {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Replace with a proper keystore before publishing to Google Play.
-            // See: https://docs.flutter.dev/deployment/android#signing-the-app
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keystoreExists && keystoreProps != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
 
-            // R8 code shrinking + obfuscation is disabled because it causes OOM on CI runners
-            // with the current Gradle heap settings. Enable locally if needed.
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(

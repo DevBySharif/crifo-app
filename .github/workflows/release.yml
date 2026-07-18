@@ -42,6 +42,24 @@ jobs:
           fi
         shell: bash
 
+      - name: Create release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/app/crifo-keystore.jks
+            cat > android/key.properties <<EOF
+          storePassword=crifo2024
+          keyPassword=crifo2024
+          keyAlias=crifo
+          storeFile=crifo-keystore.jks
+          EOF
+            echo "Keystore created from secret"
+          else
+            echo "No KEYSTORE_B64 secret — will use debug signing"
+          fi
+        shell: bash
+
       - name: Install Dependencies
         run: flutter pub get
 

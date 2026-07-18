@@ -123,7 +123,7 @@ class _MainShellState extends ConsumerState<MainShell> {
           Text('Update available', style: TextStyle(color: ctx.cTextPrimary, fontSize: 17, fontWeight: FontWeight.w700)),
         ]),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Version ${u.versionName} is ready.',
+          Text('Version ${u.versionName} (code: ${u.versionCode}) is ready.',
               style: TextStyle(color: ctx.cTextSecondary, fontSize: 13)),
           if (u.releaseNotes.trim().isNotEmpty) ...[
             const SizedBox(height: 10),

@@ -1,10 +1,11 @@
+import 'dart:math';
 import 'package:dio/dio.dart';
 
 /// Installed build number. Must match pubspec `version: x.y.z+N` on every
 /// release so the in-app update prompt can detect newer builds.
 const kAppVersionCode = 16;
 
-const _versionUrl = 'https://crifo.netlify.app/version.json';
+final _versionUrl = 'https://crifo.netlify.app/version.json?_=${DateTime.now().millisecondsSinceEpoch}${Random().nextInt(9999)}';
 const _maxRetries = 2;
 
 class AppUpdate {

@@ -69,3 +69,7 @@ ios/Runner/GoogleService-Info.plist
 # Cloudflare Worker proxy deps
 proxy/node_modules/
 proxy/.wrangler/
+
+# Keystore
+android/app/crifo-keystore.jks
+android/key.properties
