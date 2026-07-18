@@ -3,6 +3,10 @@ build/
 *.apk
 *.aab
 
+# DEB analysis/research files — not app source
+dude-*
+fix_tv.py
+
 # Miscellaneous
 *.class
 *.log
